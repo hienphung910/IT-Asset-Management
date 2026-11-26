@@ -12,6 +12,6 @@ __pycache__/
 .idea/
 
 # Tài liệu nội bộ, chỉ giữ trên máy
-TaiLieu*
+TaiLieuYeuCauHeThong.md
 KhungHeThong.md
 CLAUDE.md
