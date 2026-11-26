@@ -2,19 +2,7 @@
 
 Ứng dụng web quản lý tài sản CNTT trong công ty. Nó ghi lại công ty đang có những thiết bị nào, ai đang giữ từng thiết bị và thiết bị đó đang ở trạng thái gì.
 
-Cả hệ thống được thiết kế gồm 7 module:
-
-1. Tự động phát hiện và kiểm kê thiết bị
-2. Vòng đời và bàn giao tài sản
-3. Phần mềm, bản quyền và rủi ro bảo mật
-4. Quản lý yêu cầu hỗ trợ (ticket) và sơ đồ quan hệ hạ tầng
-5. Tài chính, hợp đồng và bảo hành
-6. Triển khai phần mềm và chạy script từ xa
-7. Báo cáo, dashboard và tích hợp
-
-Hiện mới làm xong bản cơ bản của Module 2.
-
-## Module 2 làm được gì
+## Tính năng
 
 - Quản lý danh mục thiết bị (Laptop, PC, Màn hình…), vị trí hoặc phòng ban, và danh sách nhân viên.
 - Thêm, sửa và tìm tài sản theo mã, tên, serial hoặc người đang giữ. Mỗi tài sản có một mã riêng; nếu để trống, hệ thống tự tạo mã dạng `TS-000001`.
@@ -24,8 +12,6 @@ Hiện mới làm xong bản cơ bản của Module 2.
 - Mỗi tài sản có mã QR và tem để in dán lên thiết bị.
 - Kiểm tra dữ liệu nhập: email phải đúng dạng và không trùng giữa hai nhân viên, họ tên không chứa số, mã và serial không được trùng.
 - Giao diện có chế độ sáng, tối, hoặc tự theo cài đặt của máy.
-
-Bản này chưa có đăng nhập và phân quyền.
 
 ## Công nghệ
 
@@ -84,5 +70,3 @@ server/
   requirements.txt     danh sách thư viện Python
   .env.example         mẫu cấu hình kết nối MySQL
 ```
-
-Việc tiếp theo là Module 1: một agent nhỏ chạy trên từng máy tính, tự gửi thông tin phần cứng và phần mềm về server.

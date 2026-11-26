@@ -8,7 +8,6 @@ __pycache__/
 *.db
 
 # Cấu hình riêng của công cụ / trình soạn thảo
-.claude/
 .vscode/
 .idea/
 
