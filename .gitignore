@@ -1,0 +1,17 @@
+# Mật khẩu và môi trường riêng của từng máy
+.env
+.venv/
+
+# File sinh ra khi chạy
+__pycache__/
+*.pyc
+*.db
+
+# Cấu hình riêng của công cụ / trình soạn thảo
+.claude/
+.vscode/
+.idea/
+
+# Tài liệu nội bộ, chỉ giữ trên máy
+TaiLieuYeuCauHeThong.md
+KhungHeThong.md
