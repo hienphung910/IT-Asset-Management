@@ -68,5 +68,4 @@ server/
   app/                 code phía server: API, bảng dữ liệu, quy tắc cấp phát và thu hồi
   static/              giao diện web
   requirements.txt     danh sách thư viện Python
-  .env.example         mẫu cấu hình kết nối MySQL
 ```
