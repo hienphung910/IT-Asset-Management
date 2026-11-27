@@ -5,9 +5,10 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..models import Asset, Category, Employee, Location
+from ..models import Asset, AssetModel, Category, Employee, Location, Manufacturer
 from ..schemas import (
-    AssetOut, CategoryIn, CategoryOut, EmployeeIn, EmployeeOut, LocationIn, LocationOut,
+    AssetModelOut, AssetOut, CategoryIn, CategoryOut, EmployeeIn, EmployeeOut, LocationIn,
+    LocationOut,
 )
 from ..services.auth import current_user, require_admin, require_manager
 
@@ -55,6 +56,16 @@ def update_category(category_id: int, data: CategoryIn, db: Session = Depends(ge
     obj = _get_or_404(db, Category, category_id, "Không tìm thấy danh mục.")
     obj.name = data.name
     return _save(db, obj, f'Đã có danh mục "{data.name}".', "name")
+
+
+# ---------- Hãng và model ----------
+
+@router.get("/asset-models", response_model=list[AssetModelOut])
+def list_asset_models(db: Session = Depends(get_db)):
+    """Các model đã có kèm hãng, để form tài sản gợi ý thay vì bắt gõ lại.
+    Model mới được tạo tự động khi lưu tài sản (xem _resolve_model trong assets.py)."""
+    stmt = select(AssetModel).join(Manufacturer).order_by(Manufacturer.name, AssetModel.name)
+    return db.scalars(stmt).all()
 
 
 # ---------- Vị trí ----------

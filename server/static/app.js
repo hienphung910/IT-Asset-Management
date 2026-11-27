@@ -365,10 +365,13 @@ async function refreshAssets() {
 
 // ===================== Tài sản: thêm / sửa =====================
 async function viewAssetForm(id) {
-  const [categories, asset] = await Promise.all([
+  const [categories, models, asset] = await Promise.all([
     api("/categories"),
+    api("/asset-models"),  // các model đã có kèm hãng, dùng để gợi ý
     id ? api(`/assets/${id}`) : null,
   ]);
+  const makers = [...new Set(models.map(m => m.manufacturer.name))];
+  const sameText = (x, y) => x.trim().toLowerCase() === y.trim().toLowerCase();
   const a = asset || {};
   const field = (name, label, attrs = "") =>
     `<label for="f-${name}"><span>${label}</span><input id="f-${name}" name="${name}" value="${esc(a[name] ?? "")}" ${attrs}></label>`;
@@ -390,8 +393,10 @@ async function viewAssetForm(id) {
           </select>
         </label>
         ${field("serial_number", "Serial", 'maxlength="100"')}
-        ${field("manufacturer", "Hãng sản xuất", 'maxlength="100" placeholder="VD: Dell"')}
-        ${field("model", "Model", 'maxlength="100" placeholder="VD: Latitude 5420"')}
+        ${field("manufacturer", "Hãng sản xuất", 'maxlength="100" placeholder="VD: Dell" list="dl-makers" autocomplete="off"')}
+        ${field("model", "Model", 'maxlength="100" placeholder="VD: Latitude 5420" list="dl-models" autocomplete="off"')}
+        <datalist id="dl-makers">${makers.map(n => `<option value="${esc(n)}"></option>`).join("")}</datalist>
+        <datalist id="dl-models"></datalist>
         <label class="full" for="f-notes"><span>Ghi chú</span><textarea id="f-notes" name="notes">${esc(a.notes ?? "")}</textarea></label>
       </div>
       <div class="form-actions">
@@ -402,9 +407,36 @@ async function viewAssetForm(id) {
 
   const form = $app.querySelector("#asset-form");
   watchFieldErrors(form);
+
+  // Gợi ý model: đã gõ một hãng có sẵn thì chỉ gợi ý model của hãng đó
+  const fillModelHints = () => {
+    const maker = form.manufacturer.value;
+    const ofMaker = models.filter(m => sameText(m.manufacturer.name, maker));
+    $app.querySelector("#dl-models").innerHTML = (ofMaker.length ? ofMaker : models)
+      .map(m => `<option value="${esc(m.name)}">${esc(m.manufacturer.name)}</option>`).join("");
+  };
+  fillModelHints();
+  form.manufacturer.addEventListener("input", fillModelHints);
+  // Chọn một model đã có mà chưa nhập hãng thì điền hãng giúp (khi model đó chỉ thuộc một hãng)
+  form.model.addEventListener("change", () => {
+    const found = models.filter(m => sameText(m.name, form.model.value));
+    if (found.length === 1 && !form.manufacturer.value.trim()) {
+      form.manufacturer.value = found[0].manufacturer.name;
+      clearFieldError(form.manufacturer);
+      fillModelHints();
+    }
+  });
+
   form.onsubmit = async e => {
     e.preventDefault();
     if (!checkFields(form, [{ name: "name", label: "Tên tài sản", required: true }])) return;
+    // Cùng quy tắc với server (_resolve_model): hãng chỉ lưu được thông qua model
+    const maker = form.manufacturer.value.trim(), model = form.model.value.trim();
+    if (!maker !== !model) {
+      markInvalid(maker ? form.model : form.manufacturer,
+        "Hãng sản xuất và model đi cùng nhau: nhập cả hai hoặc để trống cả hai.", true);
+      return;
+    }
     const body = formData(form);
     body.category_id = body.category_id ? Number(body.category_id) : null;
     try {

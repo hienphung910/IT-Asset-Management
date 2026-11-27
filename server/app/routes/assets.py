@@ -9,7 +9,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..models import READY, STATUSES, Asset, Category, CustodyLog, Employee, User
+from ..models import (
+    READY, STATUSES, Asset, AssetModel, Category, CustodyLog, Employee, Manufacturer, User,
+)
 from ..schemas import AssetIn, AssetOut, AssetPage, CheckinIn, CheckoutIn, LogOut, StatusIn
 from ..services import custody
 from ..services.auth import current_user, require_admin, require_manager
@@ -32,6 +34,42 @@ def _get_asset(db: Session, asset_id: int, lock: bool = False) -> Asset:
 def _check_category(db: Session, category_id: int | None) -> None:
     if category_id is not None and db.get(Category, category_id) is None:
         raise HTTPException(404, "Không tìm thấy danh mục đã chọn.")
+
+
+def _get_or_create(db: Session, model, where: list, **values):
+    """Tìm một dòng theo điều kiện, chưa có thì tạo. Dùng SAVEPOINT để nếu request khác
+    vừa tạo trùng thì chỉ hủy bước chèn này rồi đọc lại, không hỏng phần còn lại của transaction."""
+    obj = db.scalar(select(model).where(*where))
+    if obj is None:
+        try:
+            with db.begin_nested():
+                obj = model(**values)
+                db.add(obj)
+                db.flush()
+        except IntegrityError:
+            obj = db.scalar(select(model).where(*where))
+    return obj
+
+
+def _resolve_model(db: Session, manufacturer: str | None, model: str | None) -> AssetModel | None:
+    """Đổi cặp chuỗi hãng + model người dùng nhập thành một dòng asset_model.
+    So tên không phân biệt hoa thường, để "dell" và "Dell" là cùng một hãng."""
+    if not manufacturer and not model:
+        return None
+    if not manufacturer or not model:
+        # Hãng chỉ được lưu thông qua model, nên không lưu được một trong hai
+        raise HTTPException(422, {
+            "message": "Hãng sản xuất và model đi cùng nhau: nhập cả hai hoặc để trống cả hai.",
+            "field": "manufacturer" if not manufacturer else "model",
+        })
+    maker = _get_or_create(
+        db, Manufacturer, [func.lower(Manufacturer.name) == manufacturer.lower()], name=manufacturer,
+    )
+    return _get_or_create(
+        db, AssetModel,
+        [AssetModel.manufacturer_id == maker.id, func.lower(AssetModel.name) == model.lower()],
+        manufacturer_id=maker.id, name=model,
+    )
 
 
 def _check_unique(db: Session, tag: str | None, serial: str | None, exclude_id: int | None = None) -> None:
@@ -90,10 +128,13 @@ def create_asset(data: AssetIn, db: Session = Depends(get_db), actor: User = Dep
     _check_category(db, data.category_id)
     values = data.model_dump()
     tag = values.pop("asset_tag")
+    manufacturer, model = values.pop("manufacturer"), values.pop("model")
     _check_unique(db, tag, data.serial_number)
+    asset_model = _resolve_model(db, manufacturer, model)
 
     # Chưa có id thì chưa sinh được mã TS-xxxxxx → dùng mã tạm rồi đổi sau khi flush
-    asset = Asset(**values, status=READY, asset_tag=tag or f"TMP-{uuid4().hex[:20]}")
+    asset = Asset(**values, status=READY, asset_tag=tag or f"TMP-{uuid4().hex[:20]}",
+                  asset_model=asset_model)
     db.add(asset)
     try:
         db.flush()
@@ -122,7 +163,9 @@ def update_asset(asset_id: int, data: AssetIn, db: Session = Depends(get_db),
     values = data.model_dump()
     if not values["asset_tag"]:
         values.pop("asset_tag")  # để trống thì giữ mã cũ
+    manufacturer, model = values.pop("manufacturer"), values.pop("model")
     _check_unique(db, values.get("asset_tag"), data.serial_number, exclude_id=asset.id)
+    asset.asset_model = _resolve_model(db, manufacturer, model)
     for key, value in values.items():
         setattr(asset, key, value)
     custody.add_log(db, asset, actor, "update", None, None, note="Cập nhật thông tin")

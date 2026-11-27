@@ -183,6 +183,17 @@ class AssetIn(InModel):
     notes: str | None = None
 
 
+class ManufacturerOut(OutModel):
+    id: int
+    name: str
+
+
+class AssetModelOut(OutModel):
+    id: int
+    name: str
+    manufacturer: ManufacturerOut
+
+
 class AssetOut(OutModel):
     id: int
     asset_tag: str

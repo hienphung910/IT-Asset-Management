@@ -1,7 +1,7 @@
 """Các bảng dữ liệu."""
 from datetime import datetime
 
-from sqlalchemy import JSON, DateTime, ForeignKey, String, Text, func, text
+from sqlalchemy import JSON, DateTime, ForeignKey, String, Text, UniqueConstraint, func, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -76,6 +76,30 @@ class UserSession(Base):
     user: Mapped[User] = relationship(lazy="joined")
 
 
+class Manufacturer(Base):
+    """Hãng sản xuất."""
+
+    __tablename__ = "manufacturer"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(100), unique=True)
+
+
+class AssetModel(Base):
+    """Dòng máy (model) của một hãng, xác định bằng cặp (hãng, tên model): hai hãng có thể
+    đặt trùng tên model. Tách khỏi bảng asset để mỗi cặp chỉ lưu một lần, thay vì gõ lại
+    bằng chữ tự do trên từng tài sản."""
+
+    __tablename__ = "asset_model"
+    __table_args__ = (UniqueConstraint("manufacturer_id", "name"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    manufacturer_id: Mapped[int] = mapped_column(ForeignKey("manufacturer.id"))
+    name: Mapped[str] = mapped_column(String(100))
+
+    manufacturer: Mapped[Manufacturer] = relationship(lazy="joined")
+
+
 class Asset(Base):
     __tablename__ = "asset"
 
@@ -85,8 +109,8 @@ class Asset(Base):
     category_id: Mapped[int | None] = mapped_column(ForeignKey("category.id"))
     status: Mapped[str] = mapped_column(String(20), default=READY, index=True)
     serial_number: Mapped[str | None] = mapped_column(String(100), unique=True)
-    manufacturer: Mapped[str | None] = mapped_column(String(100))
-    model: Mapped[str | None] = mapped_column(String(100))
+    # Hãng và model không lưu ở đây nữa, chỉ trỏ tới asset_model (xem AssetModel)
+    model_id: Mapped[int | None] = mapped_column(ForeignKey("asset_model.id"))
     assigned_employee_id: Mapped[int | None] = mapped_column(ForeignKey("employee.id"))
     assigned_location_id: Mapped[int | None] = mapped_column(ForeignKey("location.id"))
     notes: Mapped[str | None] = mapped_column(Text)
@@ -107,8 +131,18 @@ class Asset(Base):
     last_seen: Mapped[datetime | None] = mapped_column(DateTime)
 
     category: Mapped[Category | None] = relationship(lazy="selectin")
+    asset_model: Mapped[AssetModel | None] = relationship(lazy="selectin")
     assigned_employee: Mapped[Employee | None] = relationship(lazy="selectin")
     assigned_location: Mapped[Location | None] = relationship(lazy="selectin")
+
+    # API vẫn trả hãng và model dạng chuỗi như trước; hai giá trị này đọc qua asset_model
+    @property
+    def manufacturer(self) -> str | None:
+        return self.asset_model.manufacturer.name if self.asset_model else None
+
+    @property
+    def model(self) -> str | None:
+        return self.asset_model.name if self.asset_model else None
 
 
 class CustodyLog(Base):
