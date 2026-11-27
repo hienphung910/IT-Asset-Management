@@ -386,17 +386,18 @@ async function viewAssetForm(id) {
       <div class="form-grid">
         ${field("name", 'Tên tài sản <span class="req">*</span>', 'required maxlength="200" placeholder="VD: Laptop Dell Latitude 5420"')}
         ${field("asset_tag", "Mã tài sản", `maxlength="50" placeholder="${id ? "Để trống thì giữ mã hiện tại" : "Để trống thì hệ thống tự tạo, ví dụ TS-000001"}"`)}
+        ${field("manufacturer", "Hãng sản xuất", 'maxlength="100" placeholder="VD: Dell" list="dl-makers" autocomplete="off"')}
+        ${field("model", "Model", 'maxlength="100" placeholder="VD: Latitude 5420" list="dl-models" autocomplete="off"')}
+        <datalist id="dl-makers">${makers.map(n => `<option value="${esc(n)}"></option>`).join("")}</datalist>
+        <datalist id="dl-models"></datalist>
         <label for="f-category"><span>Danh mục</span>
           <select id="f-category" name="category_id">
             <option value="">Chọn danh mục</option>
             ${categories.map(c => `<option value="${c.id}" ${c.id === a.category_id ? "selected" : ""}>${esc(c.name)}</option>`).join("")}
           </select>
+          <small class="field-hint" id="category-hint"></small>
         </label>
         ${field("serial_number", "Serial", 'maxlength="100"')}
-        ${field("manufacturer", "Hãng sản xuất", 'maxlength="100" placeholder="VD: Dell" list="dl-makers" autocomplete="off"')}
-        ${field("model", "Model", 'maxlength="100" placeholder="VD: Latitude 5420" list="dl-models" autocomplete="off"')}
-        <datalist id="dl-makers">${makers.map(n => `<option value="${esc(n)}"></option>`).join("")}</datalist>
-        <datalist id="dl-models"></datalist>
         <label class="full" for="f-notes"><span>Ghi chú</span><textarea id="f-notes" name="notes">${esc(a.notes ?? "")}</textarea></label>
       </div>
       <div class="form-actions">
@@ -416,7 +417,32 @@ async function viewAssetForm(id) {
       .map(m => `<option value="${esc(m.name)}">${esc(m.manufacturer.name)}</option>`).join("");
   };
   fillModelHints();
-  form.manufacturer.addEventListener("input", fillModelHints);
+
+  // Danh mục thuộc về model, không thuộc từng tài sản: ô Danh mục đi theo hãng + model đang nhập
+  const knownModel = () => models.find(m =>
+    sameText(m.manufacturer.name, form.manufacturer.value) && sameText(m.name, form.model.value));
+  const categorySelect = form.category_id;
+  const categoryHint = $app.querySelector("#category-hint");
+  let lastKnownId;  // undefined = lần chạy đầu, giữ giá trị form đã điền sẵn
+  const syncCategory = () => {
+    const maker = form.manufacturer.value.trim(), model = form.model.value.trim();
+    const known = knownModel();
+    const knownId = known?.id ?? null;
+    categorySelect.disabled = !(maker && model);
+    if (categorySelect.disabled) categorySelect.value = "";
+    // Vừa khớp sang một model đã có (hoặc rời khỏi nó) thì lấy danh mục của model đó;
+    // đang gõ một model mới thì giữ lựa chọn của người dùng
+    else if (lastKnownId !== undefined && knownId !== lastKnownId) categorySelect.value = known?.category_id ?? "";
+    lastKnownId = knownId;
+    clearFieldError(categorySelect);
+    categoryHint.textContent = categorySelect.disabled ? "Danh mục đi theo model. Nhập hãng và model trước."
+      : known?.category ? `Model này đang thuộc danh mục ${known.category.name}. Đổi ở đây là đổi cho mọi tài sản cùng model.`
+      : "Danh mục chọn ở đây áp dụng cho mọi tài sản cùng model.";
+  };
+  syncCategory();
+
+  form.manufacturer.addEventListener("input", () => { fillModelHints(); syncCategory(); });
+  form.model.addEventListener("input", syncCategory);
   // Chọn một model đã có mà chưa nhập hãng thì điền hãng giúp (khi model đó chỉ thuộc một hãng)
   form.model.addEventListener("change", () => {
     const found = models.filter(m => sameText(m.name, form.model.value));
@@ -425,6 +451,7 @@ async function viewAssetForm(id) {
       clearFieldError(form.manufacturer);
       fillModelHints();
     }
+    syncCategory();
   });
 
   form.onsubmit = async e => {
@@ -439,6 +466,12 @@ async function viewAssetForm(id) {
     }
     const body = formData(form);
     body.category_id = body.category_id ? Number(body.category_id) : null;
+    // Đổi danh mục của một model đã có là đổi cho mọi tài sản cùng model, nên hỏi lại
+    const known = knownModel();
+    if (known?.category_id && body.category_id && body.category_id !== known.category_id) {
+      const next = categories.find(c => c.id === body.category_id);
+      if (!confirm(`Đổi danh mục của model ${known.manufacturer.name} ${known.name} từ "${known.category.name}" sang "${next.name}"? Thay đổi áp dụng cho mọi tài sản cùng model.`)) return;
+    }
     try {
       const saved = await api(id ? `/assets/${id}` : "/assets", { method: id ? "PUT" : "POST", body });
       toast(id ? "Đã lưu thay đổi" : `Đã thêm ${saved.asset_tag}`);

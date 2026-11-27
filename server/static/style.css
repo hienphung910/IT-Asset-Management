@@ -354,7 +354,7 @@ input[aria-invalid="true"]:focus, select[aria-invalid="true"]:focus, textarea[ar
 .settings .theme-switch button { font-size: 12px; padding: 10px 14px; border-color: var(--line); }
 .settings .theme-switch button.active { border-color: var(--ink); background: var(--surface-2); }
 .settings .field-hint { display: block; margin-top: 12px; }
-input:disabled { color: var(--muted); background: var(--surface-2); cursor: not-allowed; }
+input:disabled, select:disabled { color: var(--muted); background-color: var(--surface-2); cursor: not-allowed; opacity: 1; }
 
 /* ===================== Tài khoản (admin) ===================== */
 td select { width: auto; min-width: 132px; height: 32px; font-size: 13px; }

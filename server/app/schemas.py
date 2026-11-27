@@ -176,7 +176,7 @@ class ActorOut(OutModel):
 class AssetIn(InModel):
     asset_tag: str | None = Field(default=None, max_length=50)  # để trống → tự sinh
     name: str = Field(max_length=200)
-    category_id: int | None = None
+    category_id: int | None = None  # danh mục của model; áp dụng cho mọi tài sản cùng model
     serial_number: str | None = Field(default=None, max_length=100)
     manufacturer: str | None = Field(default=None, max_length=100)
     model: str | None = Field(default=None, max_length=100)
@@ -192,6 +192,8 @@ class AssetModelOut(OutModel):
     id: int
     name: str
     manufacturer: ManufacturerOut
+    category_id: int | None
+    category: CategoryOut | None
 
 
 class AssetOut(OutModel):

@@ -11,7 +11,8 @@
 - Mỗi lần thêm, sửa, cấp phát, thu hồi hay đổi trạng thái đều được ghi vào nhật ký của tài sản đó.
 - Mỗi tài sản có mã QR và tem để in dán lên thiết bị.
 - Kiểm tra dữ liệu nhập: email phải đúng dạng và không trùng giữa hai nhân viên, họ tên không chứa số, mã và serial không được trùng.
-- Hãng sản xuất và model được lưu thành danh mục riêng, nên form tài sản gợi ý các hãng và model đã nhập trước đó. Hai ô này đi cùng nhau: nhập cả hai hoặc để trống cả hai.
+- Hãng sản xuất và model được lưu riêng, nên form tài sản gợi ý các hãng và model đã nhập trước đó. Hai ô này đi cùng nhau: nhập cả hai hoặc để trống cả hai.
+- Danh mục thuộc về model chứ không thuộc từng tài sản: mọi tài sản cùng model có cùng danh mục, và tài sản chưa nhập hãng, model thì chưa có danh mục.
 - Giao diện mặc định theo cài đặt sáng/tối của máy; sau khi đăng nhập có thể đổi sang sáng hoặc tối trong trang Cài đặt.
 - Phải đăng nhập mới dùng được, và mỗi tài khoản có một trong ba vai trò (xem bảng dưới). Nhật ký của tài sản ghi cả tài khoản đã thao tác.
 

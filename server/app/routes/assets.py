@@ -51,10 +51,19 @@ def _get_or_create(db: Session, model, where: list, **values):
     return obj
 
 
-def _resolve_model(db: Session, manufacturer: str | None, model: str | None) -> AssetModel | None:
-    """Đổi cặp chuỗi hãng + model người dùng nhập thành một dòng asset_model.
-    So tên không phân biệt hoa thường, để "dell" và "Dell" là cùng một hãng."""
+def _resolve_model(db: Session, manufacturer: str | None, model: str | None,
+                   category_id: int | None) -> AssetModel | None:
+    """Đổi hãng + model người dùng nhập thành một dòng asset_model, kèm danh mục của model.
+    So tên không phân biệt hoa thường, để "dell" và "Dell" là cùng một hãng.
+
+    Danh mục thuộc về model: gửi category_id khác với danh mục hiện tại của model thì đổi
+    danh mục của model đó (tức là của mọi tài sản cùng model); không gửi thì giữ nguyên."""
     if not manufacturer and not model:
+        if category_id is not None:
+            raise HTTPException(422, {
+                "message": "Danh mục đi theo model: nhập hãng sản xuất và model trước khi chọn danh mục.",
+                "field": "category_id",
+            })
         return None
     if not manufacturer or not model:
         # Hãng chỉ được lưu thông qua model, nên không lưu được một trong hai
@@ -65,11 +74,15 @@ def _resolve_model(db: Session, manufacturer: str | None, model: str | None) -> 
     maker = _get_or_create(
         db, Manufacturer, [func.lower(Manufacturer.name) == manufacturer.lower()], name=manufacturer,
     )
-    return _get_or_create(
+    row = _get_or_create(
         db, AssetModel,
         [AssetModel.manufacturer_id == maker.id, func.lower(AssetModel.name) == model.lower()],
-        manufacturer_id=maker.id, name=model,
+        manufacturer_id=maker.id, name=model, category_id=category_id,
     )
+    if category_id is not None and row.category_id != category_id:
+        # Gán qua quan hệ (không chỉ category_id) để dữ liệu trả về ngay sau đó đã là danh mục mới
+        row.category = db.get(Category, category_id)
+    return row
 
 
 def _check_unique(db: Session, tag: str | None, serial: str | None, exclude_id: int | None = None) -> None:
@@ -93,7 +106,9 @@ def list_assets(
     size: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
 ):
-    stmt = select(Asset).outerjoin(Employee, Asset.assigned_employee_id == Employee.id)
+    stmt = (select(Asset)
+            .outerjoin(Employee, Asset.assigned_employee_id == Employee.id)
+            .outerjoin(AssetModel, Asset.model_id == AssetModel.id))
     if q and q.strip():
         like = f"%{q.strip()}%"
         stmt = stmt.where(or_(
@@ -105,7 +120,7 @@ def list_assets(
     if status:
         stmt = stmt.where(Asset.status == status)
     if category_id:
-        stmt = stmt.where(Asset.category_id == category_id)
+        stmt = stmt.where(AssetModel.category_id == category_id)
 
     total = db.scalar(select(func.count()).select_from(stmt.subquery()))
     rows = db.scalars(stmt.order_by(Asset.id.desc()).offset((page - 1) * size).limit(size)).all()
@@ -129,8 +144,9 @@ def create_asset(data: AssetIn, db: Session = Depends(get_db), actor: User = Dep
     values = data.model_dump()
     tag = values.pop("asset_tag")
     manufacturer, model = values.pop("manufacturer"), values.pop("model")
+    category_id = values.pop("category_id")
     _check_unique(db, tag, data.serial_number)
-    asset_model = _resolve_model(db, manufacturer, model)
+    asset_model = _resolve_model(db, manufacturer, model, category_id)
 
     # Chưa có id thì chưa sinh được mã TS-xxxxxx → dùng mã tạm rồi đổi sau khi flush
     asset = Asset(**values, status=READY, asset_tag=tag or f"TMP-{uuid4().hex[:20]}",
@@ -164,8 +180,9 @@ def update_asset(asset_id: int, data: AssetIn, db: Session = Depends(get_db),
     if not values["asset_tag"]:
         values.pop("asset_tag")  # để trống thì giữ mã cũ
     manufacturer, model = values.pop("manufacturer"), values.pop("model")
+    category_id = values.pop("category_id")
     _check_unique(db, values.get("asset_tag"), data.serial_number, exclude_id=asset.id)
-    asset.asset_model = _resolve_model(db, manufacturer, model)
+    asset.asset_model = _resolve_model(db, manufacturer, model, category_id)
     for key, value in values.items():
         setattr(asset, key, value)
     custody.add_log(db, asset, actor, "update", None, None, note="Cập nhật thông tin")

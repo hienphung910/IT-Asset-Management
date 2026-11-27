@@ -87,8 +87,11 @@ class Manufacturer(Base):
 
 class AssetModel(Base):
     """Dòng máy (model) của một hãng, xác định bằng cặp (hãng, tên model): hai hãng có thể
-    đặt trùng tên model. Tách khỏi bảng asset để mỗi cặp chỉ lưu một lần, thay vì gõ lại
-    bằng chữ tự do trên từng tài sản."""
+    đặt trùng tên model.
+
+    Danh mục nằm ở đây chứ không nằm ở asset: biết model là biết danh mục (Latitude 5420
+    luôn là Laptop), nên nếu ghi danh mục trên từng tài sản thì model_id sẽ quyết định một
+    cột không khóa và bảng asset không còn đạt chuẩn BCNF."""
 
     __tablename__ = "asset_model"
     __table_args__ = (UniqueConstraint("manufacturer_id", "name"),)
@@ -96,8 +99,10 @@ class AssetModel(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     manufacturer_id: Mapped[int] = mapped_column(ForeignKey("manufacturer.id"))
     name: Mapped[str] = mapped_column(String(100))
+    category_id: Mapped[int | None] = mapped_column(ForeignKey("category.id"))
 
     manufacturer: Mapped[Manufacturer] = relationship(lazy="joined")
+    category: Mapped[Category | None] = relationship(lazy="joined")
 
 
 class Asset(Base):
@@ -106,10 +111,9 @@ class Asset(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     asset_tag: Mapped[str] = mapped_column(String(50), unique=True)
     name: Mapped[str] = mapped_column(String(200))
-    category_id: Mapped[int | None] = mapped_column(ForeignKey("category.id"))
     status: Mapped[str] = mapped_column(String(20), default=READY, index=True)
     serial_number: Mapped[str | None] = mapped_column(String(100), unique=True)
-    # Hãng và model không lưu ở đây nữa, chỉ trỏ tới asset_model (xem AssetModel)
+    # Hãng, model và danh mục không lưu ở đây, chỉ trỏ tới asset_model (xem AssetModel)
     model_id: Mapped[int | None] = mapped_column(ForeignKey("asset_model.id"))
     assigned_employee_id: Mapped[int | None] = mapped_column(ForeignKey("employee.id"))
     assigned_location_id: Mapped[int | None] = mapped_column(ForeignKey("location.id"))
@@ -130,12 +134,11 @@ class Asset(Base):
     first_seen: Mapped[datetime | None] = mapped_column(DateTime)
     last_seen: Mapped[datetime | None] = mapped_column(DateTime)
 
-    category: Mapped[Category | None] = relationship(lazy="selectin")
     asset_model: Mapped[AssetModel | None] = relationship(lazy="selectin")
     assigned_employee: Mapped[Employee | None] = relationship(lazy="selectin")
     assigned_location: Mapped[Location | None] = relationship(lazy="selectin")
 
-    # API vẫn trả hãng và model dạng chuỗi như trước; hai giá trị này đọc qua asset_model
+    # API vẫn trả hãng, model và danh mục như trước; các giá trị này đọc qua asset_model
     @property
     def manufacturer(self) -> str | None:
         return self.asset_model.manufacturer.name if self.asset_model else None
@@ -143,6 +146,14 @@ class Asset(Base):
     @property
     def model(self) -> str | None:
         return self.asset_model.name if self.asset_model else None
+
+    @property
+    def category_id(self) -> int | None:
+        return self.asset_model.category_id if self.asset_model else None
+
+    @property
+    def category(self) -> Category | None:
+        return self.asset_model.category if self.asset_model else None
 
 
 class CustodyLog(Base):
