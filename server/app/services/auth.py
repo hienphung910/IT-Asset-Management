@@ -37,7 +37,7 @@ def _now() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
-def _token_hash(token: str) -> str:
+def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
@@ -46,7 +46,7 @@ def create_session(db: Session, user: User) -> str:
     db.execute(delete(UserSession).where(UserSession.expires_at < _now()))
     token = secrets.token_urlsafe(32)
     db.add(UserSession(
-        token_hash=_token_hash(token), user_id=user.id,
+        token_hash=hash_token(token), user_id=user.id,
         expires_at=_now() + timedelta(days=SESSION_DAYS),
     ))
     db.commit()
@@ -54,7 +54,7 @@ def create_session(db: Session, user: User) -> str:
 
 
 def delete_session(db: Session, token: str) -> None:
-    db.execute(delete(UserSession).where(UserSession.token_hash == _token_hash(token)))
+    db.execute(delete(UserSession).where(UserSession.token_hash == hash_token(token)))
     db.commit()
 
 
@@ -63,7 +63,7 @@ def delete_user_sessions(db: Session, user_id: int, keep_token: str | None = Non
     (chưa commit, để gộp vào transaction của người gọi)."""
     stmt = delete(UserSession).where(UserSession.user_id == user_id)
     if keep_token:
-        stmt = stmt.where(UserSession.token_hash != _token_hash(keep_token))
+        stmt = stmt.where(UserSession.token_hash != hash_token(keep_token))
     db.execute(stmt)
 
 
@@ -72,7 +72,7 @@ def current_user(request: Request, db: Session = Depends(get_db)) -> User:
     nên khóa tài khoản hay đổi vai trò có hiệu lực ngay."""
     token = request.cookies.get(COOKIE_NAME)
     if token:
-        session = db.scalar(select(UserSession).where(UserSession.token_hash == _token_hash(token)))
+        session = db.scalar(select(UserSession).where(UserSession.token_hash == hash_token(token)))
         if session and session.expires_at > _now() and session.user.status == USER_ACTIVE:
             return session.user
     raise HTTPException(401, "Bạn cần đăng nhập để tiếp tục.")

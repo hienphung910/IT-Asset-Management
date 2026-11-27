@@ -2,7 +2,7 @@
 import re
 import unicodedata
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -258,3 +258,172 @@ class LogOut(OutModel):
     actor: ActorOut | None
     note: str | None
     created_at: datetime | None
+
+
+# ---------- Module 1: quét qua agent ----------
+# Báo cáo của agent là dữ liệu từ bên ngoài gửi vào: mọi chuỗi và danh sách đều có giới hạn.
+# Agent tự cắt cho vừa các giới hạn này trước khi gửi (xem server/agent/itam_agent.py), nên một
+# tên phần mềm quá dài không làm hỏng cả báo cáo.
+
+MAC_RE = re.compile(r"[0-9a-f]{12}")
+MAX_SOFTWARE = 10000
+
+Short = Annotated[str, Field(max_length=50)]
+
+
+def clean_mac(v: str | None) -> str | None:
+    """Đưa MAC về dạng aa:bb:cc:dd:ee:ff; giá trị không phải MAC thì bỏ."""
+    if not v:
+        return None
+    digits = re.sub(r"[^0-9a-f]", "", v.lower())
+    if not MAC_RE.fullmatch(digits) or digits == "0" * 12:
+        return None
+    return ":".join(digits[i:i + 2] for i in range(0, 12, 2))
+
+
+class EnrollmentCodeIn(InModel):
+    name: str = Field(max_length=150)
+
+
+class AgentEnrollIn(InModel):
+    code: str = Field(max_length=200)
+    hostname: str | None = Field(default=None, max_length=255)
+    platform: str | None = Field(default=None, max_length=50)
+    agent_version: str | None = Field(default=None, max_length=20)
+
+
+class DiskIn(InModel):
+    name: str | None = Field(default=None, max_length=100)
+    model: str | None = Field(default=None, max_length=200)
+    serial: str | None = Field(default=None, max_length=100)
+    size_gb: float | None = Field(default=None, ge=0, le=10_000_000)
+    kind: str | None = Field(default=None, max_length=20)  # ssd / hdd / ...
+
+
+class NicIn(InModel):
+    name: str | None = Field(default=None, max_length=100)
+    mac: str | None = Field(default=None, max_length=50)
+    ipv4: list[Short] = Field(default_factory=list, max_length=16)
+
+    @field_validator("mac")
+    @classmethod
+    def _clean_mac(cls, v: str | None) -> str | None:
+        return clean_mac(v)
+
+
+class SoftwareIn(InModel):
+    name: str = Field(max_length=255)
+    version: str | None = Field(default=None, max_length=100)
+
+
+class AgentReportIn(InModel):
+    """Một lần báo cáo cấu hình máy. Trường nào agent không đọc được thì để trống."""
+    agent_version: str | None = Field(default=None, max_length=20)
+    platform: str | None = Field(default=None, max_length=50)
+    hostname: str | None = Field(default=None, max_length=255)
+    # Định danh máy tự báo (đọc từ BIOS/firmware)
+    serial_number: str | None = Field(default=None, max_length=100)
+    bios_uuid: str | None = Field(default=None, max_length=100)
+    manufacturer: str | None = Field(default=None, max_length=100)
+    model: str | None = Field(default=None, max_length=100)
+    bios_version: str | None = Field(default=None, max_length=100)
+    # Hệ điều hành
+    os_name: str | None = Field(default=None, max_length=150)
+    os_version: str | None = Field(default=None, max_length=100)
+    kernel: str | None = Field(default=None, max_length=100)
+    # Phần cứng
+    cpu_model: str | None = Field(default=None, max_length=200)
+    cpu_cores: int | None = Field(default=None, ge=0, le=4096)
+    cpu_threads: int | None = Field(default=None, ge=0, le=4096)
+    memory_mb: int | None = Field(default=None, ge=0, le=100_000_000)
+    disks: list[DiskIn] = Field(default_factory=list, max_length=64)
+    # Mạng: mac_address và ip_address là của card đang dùng để ra mạng
+    mac_address: str | None = Field(default=None, max_length=50)
+    ip_address: str | None = Field(default=None, max_length=50)
+    nics: list[NicIn] = Field(default_factory=list, max_length=64)
+    software: list[SoftwareIn] = Field(default_factory=list, max_length=MAX_SOFTWARE)
+
+    @field_validator("mac_address")
+    @classmethod
+    def _clean_mac(cls, v: str | None) -> str | None:
+        return clean_mac(v)
+
+    @field_validator("bios_uuid")
+    @classmethod
+    def _lower_uuid(cls, v: str | None) -> str | None:
+        return v.lower() if v else v
+
+
+class AgentLinkIn(InModel):
+    asset_tag: str = Field(max_length=50)
+
+
+class EnrollmentCodeOut(OutModel):
+    id: int
+    name: str
+    hint: str
+    created_by: ActorOut
+    created_at: datetime | None
+    revoked_at: datetime | None
+    agent_count: int = 0
+
+
+class EnrollmentCodeCreated(EnrollmentCodeOut):
+    code: str  # mã thật, chỉ trả về đúng một lần này
+
+
+class AssetRef(OutModel):
+    id: int
+    asset_tag: str
+    name: str
+
+
+class AgentOut(OutModel):
+    id: int
+    status: str
+    hostname: str | None
+    platform: str | None
+    agent_version: str | None
+    remote_ip: str | None
+    enrolled_at: datetime | None
+    last_seen: datetime | None
+    matched_by: str | None
+    pending_reason: str | None
+    asset: AssetRef | None
+    # Lấy từ báo cáo gần nhất
+    serial_number: str | None
+    manufacturer: str | None
+    model: str | None
+    os_name: str | None
+    ip_address: str | None
+    mac_address: str | None
+
+
+class AgentBrief(OutModel):
+    id: int
+    hostname: str | None
+    agent_version: str | None
+    last_seen: datetime | None
+    matched_by: str | None
+
+
+class SoftwareOut(OutModel):
+    name: str
+    version: str
+
+
+class InventoryOut(OutModel):
+    """Hồ sơ kỹ thuật của một tài sản (do agent báo cáo)."""
+    hostname: str | None
+    ip_address: str | None
+    mac_address: str | None
+    bios_uuid: str | None
+    os_name: str | None
+    os_version: str | None
+    hardware: dict | None
+    first_seen: datetime | None
+    last_seen: datetime | None
+    agent: AgentBrief | None  # agent đang báo cáo cho tài sản này, nếu còn
+    # Serial máy tự báo khác serial người nhập: có thể đã gắn nhầm máy hoặc nhập sai serial
+    serial_differs: bool
+    software: list[SoftwareOut]

@@ -1,4 +1,4 @@
-"""API tài sản: thêm/sửa/xem, cấp phát, thu hồi, đổi trạng thái, lịch sử, QR."""
+"""API tài sản: thêm/sửa/xem, cấp phát, thu hồi, đổi trạng thái, lịch sử, hồ sơ kỹ thuật, QR."""
 import io
 from uuid import uuid4
 
@@ -10,10 +10,13 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models import (
-    READY, STATUSES, Asset, AssetModel, Category, CustodyLog, Employee, Manufacturer, User,
+    READY, STATUSES, Agent, Asset, AssetModel, AssetSoftware, Category, CustodyLog, Employee,
+    Manufacturer, User,
 )
-from ..schemas import AssetIn, AssetOut, AssetPage, CheckinIn, CheckoutIn, LogOut, StatusIn
-from ..services import custody
+from ..schemas import (
+    AssetIn, AssetOut, AssetPage, CheckinIn, CheckoutIn, InventoryOut, LogOut, StatusIn,
+)
+from ..services import custody, inventory
 from ..permissions import ASSET_CUSTODY, ASSET_STATUS, ASSET_WRITE, VIEW_ALL, has_permission
 from ..services.auth import current_user, require_perm
 
@@ -163,26 +166,34 @@ def asset_stats(db: Session = Depends(get_db), viewer: User = Depends(current_us
     return {"total": sum(counts.values()), **counts}
 
 
-@router.post("", response_model=AssetOut, status_code=201)
-def create_asset(data: AssetIn, db: Session = Depends(get_db),
-                 actor: User = Depends(require_perm(ASSET_WRITE))):
-    _check_category(db, data.category_id)
-    values = data.model_dump()
+def add_asset(db: Session, actor: User, values: dict, log_note: str | None = None) -> Asset:
+    """Chèn một tài sản mới từ dữ liệu của AssetIn (đã model_dump) và ghi dòng nhật ký "create".
+    CHƯA commit: người gọi commit, để gộp được thêm việc khác vào cùng transaction (ví dụ gắn
+    agent khi tạo tài sản từ một máy do agent báo cáo)."""
+    values = dict(values)
+    _check_category(db, values.get("category_id"))
     tag = values.pop("asset_tag")
     manufacturer, model = values.pop("manufacturer"), values.pop("model")
     category_id = values.pop("category_id")
-    _check_unique(db, tag, data.serial_number)
+    _check_unique(db, tag, values.get("serial_number"))
     asset_model = _resolve_model(db, manufacturer, model, category_id)
 
     # Chưa có id thì chưa sinh được mã TS-xxxxxx → dùng mã tạm rồi đổi sau khi flush
     asset = Asset(**values, status=READY, asset_tag=tag or f"TMP-{uuid4().hex[:20]}",
                   asset_model=asset_model)
     db.add(asset)
+    db.flush()
+    if not tag:
+        asset.asset_tag = f"TS-{asset.id:06d}"
+    custody.add_log(db, asset, actor, "create", None, READY, note=log_note)
+    return asset
+
+
+@router.post("", response_model=AssetOut, status_code=201)
+def create_asset(data: AssetIn, db: Session = Depends(get_db),
+                 actor: User = Depends(require_perm(ASSET_WRITE))):
     try:
-        db.flush()
-        if not tag:
-            asset.asset_tag = f"TS-{asset.id:06d}"
-        custody.add_log(db, asset, actor, "create", None, READY)
+        asset = add_asset(db, actor, data.model_dump())
         db.commit()
     except IntegrityError:
         db.rollback()
@@ -250,6 +261,30 @@ def asset_history(asset_id: int, db: Session = Depends(get_db)):
     stmt = (select(CustodyLog).where(CustodyLog.asset_id == asset_id)
             .order_by(CustodyLog.id.desc()))
     return db.scalars(stmt).all()
+
+
+@router.get("/{asset_id}/inventory", response_model=InventoryOut,
+            dependencies=[Depends(require_perm(VIEW_ALL))])
+def asset_inventory(asset_id: int, db: Session = Depends(get_db)):
+    """Hồ sơ kỹ thuật do agent báo cáo: cấu hình phần cứng, hệ điều hành, phần mềm đã cài.
+    Như lịch sử lưu ký, vai trò Nhân viên không xem được (NV-1.4.2 chỉ nêu Quản trị hạ tầng,
+    Helpdesk, Kiểm toán)."""
+    asset = _get_asset(db, asset_id)
+    reported = inventory.meaningful((asset.hardware or {}).get("serial_number"))
+    software = db.scalars(
+        select(AssetSoftware).where(AssetSoftware.asset_id == asset.id)
+        .order_by(func.lower(AssetSoftware.name), AssetSoftware.version)
+    ).all()
+    return {
+        "hostname": asset.hostname, "ip_address": asset.ip_address,
+        "mac_address": asset.mac_address, "bios_uuid": asset.bios_uuid,
+        "os_name": asset.os_name, "os_version": asset.os_version, "hardware": asset.hardware,
+        "first_seen": asset.first_seen, "last_seen": asset.last_seen,
+        "agent": db.scalar(select(Agent).where(Agent.asset_id == asset.id)),
+        "software": software,
+        "serial_differs": bool(reported and asset.serial_number
+                               and reported.lower() != asset.serial_number.strip().lower()),
+    }
 
 
 @router.get("/{asset_id}/qr")

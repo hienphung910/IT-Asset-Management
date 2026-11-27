@@ -11,7 +11,7 @@ from sqlalchemy.exc import OperationalError
 
 from .config import SERVER_DIR
 from .database import init_db
-from .routes import assets, auth, catalog
+from .routes import agents, assets, auth, catalog
 from .services.custody import BusinessError
 
 
@@ -50,6 +50,8 @@ app.include_router(auth.router)
 app.include_router(auth.users_router)
 app.include_router(catalog.router)
 app.include_router(assets.router)
+app.include_router(agents.machine_router)
+app.include_router(agents.router)
 
 # Web UI (đặt cuối cùng để không che các đường dẫn /api và /docs)
 app.mount("/", NoCacheStaticFiles(directory=SERVER_DIR / "static", html=True), name="static")

@@ -2,7 +2,7 @@
 from datetime import datetime
 
 from sqlalchemy import JSON, DateTime, ForeignKey, String, Text, UniqueConstraint, func, text
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, deferred, mapped_column, relationship
 
 from .database import Base
 from .permissions import ROLE_ENDUSER, permissions_of
@@ -131,7 +131,9 @@ class Asset(Base):
         DateTime, server_default=text("CURRENT_TIMESTAMP"), onupdate=func.now()
     )
 
-    # --- Module 1 (Discovery & Inventory): tạo sẵn, chưa dùng ---
+    # --- Module 1 (Discovery & Inventory): do báo cáo của agent ghi vào (services/inventory.py),
+    # không sửa qua form tài sản. hardware giữ CPU, RAM, ổ đĩa, card mạng, BIOS và serial/hãng/model
+    # mà máy tự báo (có thể khác serial_number và model_id do người nhập ở trên).
     hostname: Mapped[str | None] = mapped_column(String(255))
     bios_uuid: Mapped[str | None] = mapped_column(String(100))
     mac_address: Mapped[str | None] = mapped_column(String(50))
@@ -171,7 +173,8 @@ class CustodyLog(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     asset_id: Mapped[int] = mapped_column(ForeignKey("asset.id"), index=True)
-    action: Mapped[str] = mapped_column(String(20))  # create / update / checkout / checkin / status
+    # create / update / checkout / checkin / status / agent_link / agent_unlink
+    action: Mapped[str] = mapped_column(String(20))
     from_status: Mapped[str | None] = mapped_column(String(20))
     to_status: Mapped[str | None] = mapped_column(String(20))
     employee_id: Mapped[int | None] = mapped_column(ForeignKey("employee.id"))
@@ -183,3 +186,102 @@ class CustodyLog(Base):
     employee: Mapped[Employee | None] = relationship(lazy="selectin")
     location: Mapped[Location | None] = relationship(lazy="selectin")
     actor: Mapped[User | None] = relationship(lazy="selectin")
+
+
+# ---------- Module 1: quét qua agent ----------
+
+# Trạng thái của agent
+AGENT_ACTIVE = "active"    # được phép báo cáo
+AGENT_REVOKED = "revoked"  # đã thu hồi, báo cáo bị từ chối
+
+
+class EnrollmentCode(Base):
+    """Mã kết nạp: agent mới dùng mã này một lần để đăng ký với server và nhận token riêng.
+    Chỉ lưu mã băm; mã thật chỉ hiện một lần lúc tạo."""
+
+    __tablename__ = "enrollment_code"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(150))  # tên gợi nhớ, ví dụ "Đợt cài phòng Kế toán"
+    code_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    hint: Mapped[str] = mapped_column(String(12))   # vài ký tự đầu của mã, để nhận ra mã nào
+    created_by_id: Mapped[int] = mapped_column(ForeignKey("user.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=text("CURRENT_TIMESTAMP"))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime)  # có giá trị = đã thu hồi
+
+    created_by: Mapped[User] = relationship(lazy="joined")
+
+
+class Agent(Base):
+    """Một bản agent đã kết nạp trên một máy, kèm báo cáo gần nhất của nó.
+
+    Dòng này là dữ liệu của NGUỒN (máy tự báo gì); dòng asset là bản đã hợp nhất. Agent chưa
+    gắn với tài sản nào (asset_id trống) là máy đang chờ người xác nhận."""
+
+    __tablename__ = "agent"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)  # SHA-256 của token agent
+    status: Mapped[str] = mapped_column(String(20), default=AGENT_ACTIVE, index=True)
+    enrollment_code_id: Mapped[int] = mapped_column(ForeignKey("enrollment_code.id"), index=True)
+    # unique: mỗi tài sản gắn với nhiều nhất một agent. Thu hồi agent thì bỏ gắn.
+    asset_id: Mapped[int | None] = mapped_column(ForeignKey("asset.id"), unique=True)
+    hostname: Mapped[str | None] = mapped_column(String(255))
+    platform: Mapped[str | None] = mapped_column(String(50))       # windows / linux / macos
+    agent_version: Mapped[str | None] = mapped_column(String(20))
+    remote_ip: Mapped[str | None] = mapped_column(String(50))      # địa chỉ server nhìn thấy
+    enrolled_at: Mapped[datetime] = mapped_column(DateTime)
+    last_seen: Mapped[datetime | None] = mapped_column(DateTime)   # lần báo cáo gần nhất
+    matched_by: Mapped[str | None] = mapped_column(String(20))     # serial / bios_uuid / mac / hostname / manual / created
+    pending_reason: Mapped[str | None] = mapped_column(String(500))  # vì sao chưa tự gắn được
+    # Báo cáo gần nhất, đã qua kiểm tra của AgentReportIn. Danh sách phần mềm tách riêng và
+    # deferred vì có thể tới vài nghìn dòng: màn danh sách agent không bao giờ tải nó.
+    report: Mapped[dict | None] = mapped_column(JSON)
+    software: Mapped[list | None] = deferred(mapped_column(JSON))
+
+    asset: Mapped[Asset | None] = relationship(lazy="joined")
+    enrollment_code: Mapped[EnrollmentCode] = relationship(lazy="joined")
+
+    def _reported(self, key: str):
+        return (self.report or {}).get(key)
+
+    # Vài giá trị trong báo cáo, để người xử lý máy chờ xác nhận biết đó là máy nào
+    @property
+    def serial_number(self) -> str | None:
+        return self._reported("serial_number")
+
+    @property
+    def manufacturer(self) -> str | None:
+        return self._reported("manufacturer")
+
+    @property
+    def model(self) -> str | None:
+        return self._reported("model")
+
+    @property
+    def os_name(self) -> str | None:
+        return self._reported("os_name")
+
+    @property
+    def ip_address(self) -> str | None:
+        return self._reported("ip_address")
+
+    @property
+    def mac_address(self) -> str | None:
+        return self._reported("mac_address")
+
+
+class AssetSoftware(Base):
+    """Phần mềm đang cài trên một tài sản, theo báo cáo gần nhất. Ngoài id, cả ba cột hợp
+    thành khóa: không có cột nào (như nhà phát hành) phụ thuộc riêng vào tên phần mềm.
+
+    Không đặt ràng buộc unique trong database: MySQL so chuỗi không phân biệt hoa thường và
+    dấu, nên hai tên chỉ khác nhau ở dấu sẽ bị coi là trùng và làm hỏng cả báo cáo. Việc
+    không lặp dòng do _sync_software trong services/inventory.py bảo đảm."""
+
+    __tablename__ = "asset_software"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    asset_id: Mapped[int] = mapped_column(ForeignKey("asset.id"), index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    version: Mapped[str] = mapped_column(String(100), default="")  # "" = không rõ phiên bản

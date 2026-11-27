@@ -33,6 +33,9 @@ ASSET_CUSTODY = "asset.custody"
 EMPLOYEE_MANAGE = "employee.manage"
 CATALOG_MANAGE = "catalog.manage"
 USER_MANAGE = "user.manage"
+# Module 1, phần quét qua agent
+AGENT_MANAGE = "agent.manage"
+AGENT_LINK = "agent.link"
 # Ba quyền nhạy cảm của các module sau. Khai báo sẵn để tách riêng ngay từ đầu;
 # chưa có chức năng nào dùng tới.
 SCAN_CREDENTIAL_VIEW = "scan.credential.view"
@@ -47,18 +50,22 @@ PERMISSIONS = {
     EMPLOYEE_MANAGE: "Thêm và sửa nhân viên",
     CATALOG_MANAGE: "Thêm và sửa danh mục, vị trí",
     USER_MANAGE: "Duyệt, khóa, đổi vai trò và nối tài khoản với nhân viên",
-    SCAN_CREDENTIAL_VIEW: "Xem thông tin xác thực dùng để quét mạng (Module 1, chưa có)",
-    REMOTE_SCRIPT_RUN: "Chạy script từ xa (Module 6, chưa có)",
-    REPORT_SQL_QUERY: "Viết truy vấn SQL trực tiếp (Module 7, chưa có)",
+    AGENT_MANAGE: "Cấp và thu hồi mã kết nạp, thu hồi agent",
+    AGENT_LINK: "Gắn máy do agent báo cáo vào tài sản có sẵn, bỏ gắn",
+    SCAN_CREDENTIAL_VIEW: "Xem thông tin xác thực dùng để quét mạng",
+    REMOTE_SCRIPT_RUN: "Chạy script từ xa",
+    REPORT_SQL_QUERY: "Viết truy vấn SQL trực tiếp",
 }
 
 # Vai trò không có trong bảng (hoặc giá trị lạ trong database) thì không có quyền nào.
 # Tài khoản không có VIEW_ALL chỉ thấy tài sản đang giao cho hồ sơ nhân viên của mình.
 ROLE_PERMISSIONS = {
     ROLE_ADMIN: set(PERMISSIONS),
-    ROLE_INFRA: {VIEW_ALL, SCAN_CREDENTIAL_VIEW, REMOTE_SCRIPT_RUN, REPORT_SQL_QUERY},
-    # SRS giao việc nhập kho và thanh lý cho Quản lý tài sản (CC-7 đã chốt)
-    ROLE_MANAGER: {VIEW_ALL, ASSET_WRITE, ASSET_STATUS, ASSET_CUSTODY, EMPLOYEE_MANAGE},
+    ROLE_INFRA: {VIEW_ALL, AGENT_MANAGE, AGENT_LINK,
+                 SCAN_CREDENTIAL_VIEW, REMOTE_SCRIPT_RUN, REPORT_SQL_QUERY},
+    # SRS giao việc nhập kho và thanh lý cho Quản lý tài sản (CC-7 đã chốt). Tạo tài sản từ
+    # một máy do agent báo cáo cũng là "thêm tài sản" nên dùng ASSET_WRITE, không có quyền riêng.
+    ROLE_MANAGER: {VIEW_ALL, ASSET_WRITE, ASSET_STATUS, ASSET_CUSTODY, EMPLOYEE_MANAGE, AGENT_LINK},
     ROLE_HELPDESK: {VIEW_ALL},
     ROLE_AUDITOR: {VIEW_ALL},
     ROLE_ENDUSER: set(),

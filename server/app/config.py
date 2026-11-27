@@ -19,3 +19,7 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 # Tài khoản admin đầu tiên, chỉ dùng khi hệ thống chưa có admin nào
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin").strip().lower()
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "").strip()
+
+# Agent báo cáo cấu hình máy mỗi bao nhiêu phút. Server gửi con số này cho agent sau mỗi lần
+# báo cáo, nên đổi ở đây là đủ, không phải sửa trên từng máy.
+AGENT_REPORT_INTERVAL_MINUTES = max(5, int(os.getenv("AGENT_REPORT_INTERVAL_MINUTES", "360")))

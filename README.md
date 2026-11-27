@@ -15,14 +15,15 @@
 - Danh mục thuộc về model chứ không thuộc từng tài sản: mọi tài sản cùng model có cùng danh mục, và tài sản chưa nhập hãng, model thì chưa có danh mục.
 - Giao diện mặc định theo cài đặt sáng/tối của máy; sau khi đăng nhập có thể đổi sang sáng hoặc tối trong trang Cài đặt.
 - Phải đăng nhập mới dùng được, và mỗi tài khoản có một trong sáu vai trò (xem bảng dưới). Nhật ký của tài sản ghi cả tài khoản đã thao tác.
+- Agent cài trên máy trạm tự gửi cấu hình của máy về server theo chu kỳ: CPU, RAM, ổ đĩa, card mạng, hệ điều hành và phần mềm đã cài. Server tự khớp máy với tài sản đã có theo serial, BIOS UUID, MAC rồi tên máy; máy không khớp thì chờ người xác nhận ở trang Agent (xem mục "Agent quét máy").
 
 ## Tài khoản và vai trò
 
 | Vai trò | Được làm gì |
 |---|---|
 | Quản trị hệ thống | Toàn quyền: thêm và sửa tài sản, đổi trạng thái, danh mục, vị trí, duyệt, khóa, đổi vai trò tài khoản |
-| Quản trị hạ tầng | Xem toàn bộ. Các quyền riêng (cấu hình quét, chạy script từ xa) đã khai báo sẵn cho các module sau |
-| Quản lý tài sản | Xem toàn bộ, thêm và sửa tài sản, đổi trạng thái (kể cả thanh lý), cấp phát và thu hồi, thêm và sửa nhân viên |
+| Quản trị hạ tầng | Xem toàn bộ, cấp và thu hồi mã kết nạp, thu hồi agent, gắn máy do agent báo cáo vào tài sản có sẵn. Các quyền riêng khác (cấu hình quét mạng, chạy script từ xa) đã khai báo sẵn cho các module sau |
+| Quản lý tài sản | Xem toàn bộ, thêm và sửa tài sản, đổi trạng thái (kể cả thanh lý), cấp phát và thu hồi, thêm và sửa nhân viên, tạo tài sản từ máy do agent báo cáo hoặc gắn máy đó vào tài sản có sẵn |
 | Helpdesk | Xem toàn bộ, để tra cứu thiết bị và lịch sử của người báo lỗi |
 | Kiểm toán | Xem toàn bộ, không sửa gì |
 | Nhân viên | Chỉ xem tài sản đang giao cho chính mình |
@@ -32,7 +33,7 @@ Tài khoản đăng nhập khác với mục Nhân viên trên menu: Nhân viên
 
 Bấm vào tên mình ở góc phải thanh trên để mở menu tài khoản: mục Cài đặt cho đổi họ tên, đổi mật khẩu và chọn giao diện; Đăng xuất cũng nằm ở đây.
 
-Tài khoản đã từng thao tác trên tài sản thì không xóa được, chỉ khóa được, để nhật ký luôn còn tên người làm.
+Tài khoản đã từng thao tác trên tài sản hoặc đã tạo mã kết nạp agent thì không xóa được, chỉ khóa được, để nhật ký luôn còn tên người làm.
 
 ## Công nghệ
 
@@ -84,6 +85,38 @@ Nếu server dừng với thông báo "Hệ thống chưa có tài khoản admin
 
 Trên macOS hoặc Linux, thay `.venv\Scripts\python` bằng `.venv/bin/python`, và thay `Copy-Item` bằng `cp`.
 
+## Agent quét máy
+
+Agent là một tệp Python duy nhất (`server/agent/itam_agent.py`), chỉ cần Python 3.8 trở lên trên máy trạm, không cài thêm thư viện. Server tự phát tệp này ở `/api/agent/script`.
+
+1. Đăng nhập bằng tài khoản Quản trị hệ thống hoặc Quản trị hạ tầng, mở trang Agent và bấm "Tạo mã kết nạp". Mã chỉ hiện một lần, kèm sẵn các lệnh dưới đây đã điền địa chỉ server và mã.
+
+2. Trên máy cần quản lý, tải agent, kết nạp rồi cho chạy. Thay `ĐỊA_CHỈ_SERVER` và `MÃ_KẾT_NẠP` bằng giá trị thật, không thêm dấu ngoặc nhọn (shell hiểu `<` `>` là chuyển hướng tệp và báo lỗi cú pháp). Linux và macOS (dùng `sudo` để agent đọc được serial và BIOS UUID của máy):
+
+   ```bash
+   curl -fsSLo itam_agent.py http://ĐỊA_CHỈ_SERVER:8000/api/agent/script
+   sudo python3 itam_agent.py enroll --server http://ĐỊA_CHỈ_SERVER:8000 --code MÃ_KẾT_NẠP
+   sudo python3 itam_agent.py run
+   ```
+
+   Windows (PowerShell mở bằng quyền Administrator):
+
+   ```powershell
+   Invoke-WebRequest http://ĐỊA_CHỈ_SERVER:8000/api/agent/script -OutFile itam_agent.py
+   python itam_agent.py enroll --server http://ĐỊA_CHỈ_SERVER:8000 --code MÃ_KẾT_NẠP
+   python itam_agent.py run
+   ```
+
+3. Quay lại trang Agent. Máy có serial trùng một tài sản đã nhập thì tự gắn vào tài sản đó; máy không khớp nằm ở "Máy chờ xác nhận", bấm "Tạo tài sản" hoặc "Gắn vào tài sản có sẵn". Cấu hình và phần mềm của máy hiện ở khối "Hồ sơ kỹ thuật" trong trang tài sản.
+
+Một số điều cần biết:
+
+- `run` chạy mãi và gửi báo cáo theo chu kỳ do server quy định (mặc định 6 giờ; đổi bằng `AGENT_REPORT_INTERVAL_MINUTES` trong `.env`). `run --once` gửi một lần rồi thoát, dùng với cron hoặc Task Scheduler. Agent chưa tự cài thành dịch vụ: muốn nó chạy lại sau khi khởi động máy thì tự đặt bằng systemd, cron hoặc Task Scheduler.
+- `python itam_agent.py show` in ra đúng những gì agent sẽ gửi mà không gửi đi. Agent chỉ đọc cấu hình máy và tên, phiên bản phần mềm, không đọc tệp hay dữ liệu cá nhân.
+- Khóa của agent nằm trong tệp cấu hình trên máy trạm (`/etc/itam-agent/config.json` khi chạy bằng root, `%ProgramData%\ITAM-Agent\config.json` trên Windows; đổi bằng `--config`). Thu hồi một agent ở trang Agent thì khóa đó hết hiệu lực ngay.
+- Khi chạy thật nên đặt server sau HTTPS: với địa chỉ `http://` agent vẫn chạy nhưng in cảnh báo, vì khóa và dữ liệu đi qua mạng không mã hóa. Server dùng chứng chỉ tự ký thì thêm `--ca-file` kèm đường dẫn tệp CA khi kết nạp.
+- Agent mới được chạy thật trên Linux. Phần thu thập cho Windows và macOS đã viết nhưng chưa chạy thử trên máy thật.
+
 ## Nâng cấp từ bản cũ
 
 Server không tự sửa bảng đã có. Nếu database được tạo trước khi có sáu vai trò, chạy hai lệnh SQL sau một lần (hoặc xóa database để server tạo lại từ đầu):
@@ -97,11 +130,14 @@ UPDATE user SET role = 'auditor' WHERE role = 'staff';
 
 Vai trò cũ `staff` (xem toàn bộ, không sửa) nay tên là Kiểm toán (`auditor`); quyền của các tài khoản đó không đổi.
 
+Phần agent chỉ thêm ba bảng mới (`enrollment_code`, `agent`, `asset_software`), server tự tạo khi khởi động nên không cần chạy lệnh SQL nào.
+
 ## Cấu trúc thư mục
 
 ```
 server/
   app/                 code phía server: API, bảng dữ liệu, quy tắc cấp phát và thu hồi
+  agent/               agent chạy trên máy trạm (một tệp Python, server tự phát cho máy trạm tải)
   static/              giao diện web
   requirements.txt     danh sách thư viện Python
 ```

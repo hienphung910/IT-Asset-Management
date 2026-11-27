@@ -5,7 +5,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..models import USER_DISABLED, USER_PENDING, CustodyLog, Employee, User
+from ..models import USER_DISABLED, USER_PENDING, CustodyLog, Employee, EnrollmentCode, User
 from ..permissions import PERMISSIONS, ROLE_LABELS, ROLE_PERMISSIONS, USER_MANAGE
 from ..schemas import LoginIn, PasswordChangeIn, ProfileIn, RegisterIn, UserOut, UserUpdateIn
 from ..services import auth
@@ -169,6 +169,10 @@ def delete_user(user_id: int, db: Session = Depends(get_db),
     if db.scalar(select(CustodyLog.id).where(CustodyLog.actor_id == user.id).limit(1)):
         raise HTTPException(
             409, "Tài khoản này đã có thao tác trong nhật ký nên không xóa được. Hãy khóa tài khoản thay cho xóa."
+        )
+    if db.scalar(select(EnrollmentCode.id).where(EnrollmentCode.created_by_id == user.id).limit(1)):
+        raise HTTPException(
+            409, "Tài khoản này đã tạo mã kết nạp agent nên không xóa được. Hãy khóa tài khoản thay cho xóa."
         )
     auth.delete_user_sessions(db, user.id)
     db.delete(user)

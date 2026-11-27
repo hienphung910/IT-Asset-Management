@@ -147,6 +147,12 @@ const FIELD_LABELS = {
   username: "Tên đăng nhập", password: "Mật khẩu", role: "Vai trò",
   current_password: "Mật khẩu hiện tại", new_password: "Mật khẩu mới",
 };
+// Agent (Module 1). MATCHED_BY: máy được gắn với tài sản nhờ đâu (Agent.matched_by phía server)
+const MATCHED_BY = {
+  serial: "Tự khớp theo serial", bios_uuid: "Tự khớp theo BIOS UUID", mac: "Tự khớp theo địa chỉ MAC",
+  hostname: "Tự khớp theo tên máy", manual: "Gắn bằng tay", created: "Tài sản tạo từ máy này",
+};
+const PLATFORMS = { linux: "Linux", windows: "Windows", macos: "macOS" };
 function validationMessage(e) {
   const field = FIELD_LABELS[e.loc?.[e.loc.length - 1]] || "";
   switch (e.type) {
@@ -555,6 +561,8 @@ function logItem(h) {
     checkout: who ? `Cấp phát cho ${who}` : "Cấp phát",
     checkin: who ? `Thu hồi từ ${who}` : "Thu hồi",
     status: "Đổi trạng thái",
+    agent_link: "Gắn với máy do agent báo cáo",
+    agent_unlink: "Bỏ gắn agent",
   }[h.action] || h.action;
   const statuses = h.to_status
     ? `<div class="log-status">${h.from_status ? `${led(h.from_status)}<span aria-hidden="true">→</span>` : ""}${led(h.to_status)}</div>`
@@ -571,11 +579,65 @@ function logItem(h) {
     </li>`;
 }
 
+// Hồ sơ kỹ thuật do agent báo cáo (CPU, RAM, ổ đĩa, mạng, phần mềm).
+// inv = null: tài khoản không được xem (vai trò Nhân viên) nên không vẽ gì.
+function inventoryPanel(a, inv) {
+  if (!inv) return "";
+  if (!inv.last_seen) {
+    return `<section class="panel"><h2>Hồ sơ kỹ thuật</h2>
+      <p class="note-hint">Chưa có dữ liệu: chưa có agent nào báo cáo cho tài sản này.</p></section>`;
+  }
+  const hw = inv.hardware || {};
+  const row = (label, html) => html ? `<dt>${label}</dt><dd>${html}</dd>` : "";
+  const list = items => items.length ? `<ul>${items.map(i => `<li>${i}</li>`).join("")}</ul>` : "";
+  const gb = mb => `${Math.round(mb / 102.4) / 10} GB`;
+  const cpu = [hw.cpu_model, hw.cpu_cores ? `${hw.cpu_cores} nhân` : "", hw.cpu_threads ? `${hw.cpu_threads} luồng` : ""].filter(Boolean);
+  const disks = (hw.disks || []).map(d => esc([
+    d.model || d.name, d.size_gb ? `${d.size_gb} GB` : "", (d.kind || "").toUpperCase(),
+  ].filter(Boolean).join(" · ")));
+  const nics = (hw.nics || []).map(n =>
+    `${esc(n.name || "Card mạng")} <span class="mono muted">${esc(n.mac || "")}</span>${n.ipv4?.length ? ` · <span class="mono">${esc(n.ipv4.join(", "))}</span>` : ""}`);
+  const reported = [hw.manufacturer, hw.model].filter(Boolean).join(" ");
+  const source = inv.agent
+    ? `Agent trên máy ${esc(inv.agent.hostname || "số " + inv.agent.id)} báo cáo lúc ${esc(fmtDate(inv.last_seen))}${MATCHED_BY[inv.agent.matched_by] ? ` · ${MATCHED_BY[inv.agent.matched_by]}` : ""}`
+    : `Báo cáo cuối lúc ${esc(fmtDate(inv.last_seen))}. Hiện không còn agent nào báo cáo cho tài sản này.`;
+  return `
+    <section class="panel panel-gap">
+      <div>
+        <h2>Hồ sơ kỹ thuật</h2>
+        <p class="note-hint">${source}</p>
+      </div>
+      <dl class="info">
+        ${row("Tên máy", inv.hostname ? `<span class="mono">${esc(inv.hostname)}</span>` : "")}
+        ${row("Hệ điều hành", esc([inv.os_name, inv.os_version].filter(Boolean).join(" ")))}
+        ${row("CPU", esc(cpu.join(" · ")))}
+        ${row("RAM", hw.memory_mb ? gb(hw.memory_mb) : "")}
+        ${row("Ổ đĩa", list(disks))}
+        ${row("Card mạng", list(nics))}
+        ${row("Địa chỉ IP", inv.ip_address ? `<span class="mono">${esc(inv.ip_address)}</span>` : "")}
+        ${row("BIOS", esc(hw.bios_version || ""))}
+        ${row("Máy tự báo", esc(reported) + (hw.serial_number ? `${reported ? " · " : ""}<span class="mono">S/N ${esc(hw.serial_number)}</span>` : ""))}
+      </dl>
+      ${inv.serial_differs ? `<p class="warn">Serial máy tự báo (${esc(hw.serial_number)}) khác serial đang ghi cho tài sản (${esc(a.serial_number)}). Kiểm tra lại: có thể agent đã được gắn nhầm máy, hoặc serial nhập tay bị sai.</p>` : ""}
+      ${inv.software.length ? `
+      <details class="software">
+        <summary>Phần mềm đã cài (${inv.software.length})</summary>
+        <input type="search" id="sw-filter" placeholder="Lọc theo tên phần mềm" aria-label="Lọc phần mềm">
+        <div class="table-scroll"><table>
+          <thead><tr><th>Tên</th><th>Phiên bản</th></tr></thead>
+          <tbody id="sw-rows">${inv.software.map(s =>
+            `<tr><td>${esc(s.name)}</td><td class="mono muted">${esc(s.version || "Không rõ")}</td></tr>`).join("")}</tbody>
+        </table></div>
+      </details>` : `<p class="note-hint">Agent chưa báo phần mềm nào.</p>`}
+    </section>`;
+}
+
 async function viewAssetDetail(id) {
-  // Chỉ gọi những API mà tài khoản được phép: vai trò Nhân viên không xem được lịch sử,
-  // và danh sách nhân viên / vị trí chỉ cần khi được cấp phát
-  const [a, history, employees, locations] = await Promise.all([
+  // Chỉ gọi những API mà tài khoản được phép: vai trò Nhân viên không xem được lịch sử và
+  // hồ sơ kỹ thuật, và danh sách nhân viên / vị trí chỉ cần khi được cấp phát
+  const [a, inv, history, employees, locations] = await Promise.all([
     api(`/assets/${id}`),
+    seesAll() ? api(`/assets/${id}/inventory`) : null,
     seesAll() ? api(`/assets/${id}/history`) : null,
     can("asset.custody") ? api("/employees") : [],
     can("asset.custody") ? api("/locations") : [],
@@ -608,6 +670,7 @@ async function viewAssetDetail(id) {
           </dl>
         </section>
         ${actions ? `<section class="panel"><h2>Thao tác</h2>${actions}</section>` : ""}
+        ${inventoryPanel(a, inv)}
         ${history ? `<section class="panel">
           <h2>Nhật ký lưu ký</h2>
           ${history.length ? `<ol class="log">${history.map(logItem).join("")}</ol>`
@@ -634,6 +697,11 @@ async function viewAssetDetail(id) {
     </div>`;
 
   $app.querySelector("#print").onclick = () => window.print();
+  const swFilter = $app.querySelector("#sw-filter");
+  if (swFilter) swFilter.oninput = () => {
+    const q = swFilter.value.trim().toLowerCase();
+    $app.querySelectorAll("#sw-rows tr").forEach(tr => (tr.hidden = !!q && !tr.textContent.toLowerCase().includes(q)));
+  };
   $app.querySelectorAll("form[data-action]").forEach(form => {
     form.onsubmit = async e => {
       e.preventDefault();
@@ -1142,6 +1210,198 @@ async function viewUsers() {
   };
 }
 
+// ===================== Agent (Module 1: quét qua agent) =====================
+// newCode: mã kết nạp vừa tạo. Server chỉ trả mã thật đúng một lần nên chỉ hiện ở lần vẽ này.
+async function viewAgents(newCode = null) {
+  const canManage = can("agent.manage"), canLink = can("agent.link"), canCreate = can("asset.write");
+  const [agents, codes] = await Promise.all([api("/agents"), canManage ? api("/enrollment-codes") : []]);
+  const pending = agents.filter(g => g.status === "active" && !g.asset);
+  const linked = agents.filter(g => g.status === "active" && g.asset);
+  const revoked = agents.filter(g => g.status === "revoked");
+  const origin = location.origin;
+
+  const machine = g => `
+    <div class="cell-name mono">${esc(g.hostname || `Agent số ${g.id}`)}</div>
+    <div class="cell-sub">${esc([[g.manufacturer, g.model].filter(Boolean).join(" "), g.os_name || PLATFORMS[g.platform] || g.platform].filter(Boolean).join(" · "))}</div>`;
+  const seen = g => g.last_seen ? esc(fmtDate(g.last_seen)) : "Chưa báo cáo";
+  const btn = (act, g, label, primary) =>
+    `<button class="btn btn-sm ${primary ? "btn-primary" : ""}" data-act="${act}" data-id="${g.id}">${label}</button>`;
+  const installSteps = code => `<pre class="codebox"><span class="c"># Linux, macOS (cần Python 3.8 trở lên; chạy bằng sudo để đọc được serial của máy)</span>
+curl -fsSLo itam_agent.py ${esc(origin)}/api/agent/script
+sudo python3 itam_agent.py enroll --server ${esc(origin)} --code ${esc(code)}
+sudo python3 itam_agent.py run
+
+<span class="c"># Windows (PowerShell mở bằng quyền Administrator, máy đã cài Python)</span>
+Invoke-WebRequest ${esc(origin)}/api/agent/script -OutFile itam_agent.py
+python itam_agent.py enroll --server ${esc(origin)} --code ${esc(code)}
+python itam_agent.py run</pre>`;
+
+  $app.innerHTML = `
+    <div class="page-head">
+      <h1>Agent</h1>
+    </div>
+
+    <section class="panel table-panel">
+      <div class="toolbar"><h2>Máy chờ xác nhận (${pending.length})</h2></div>
+      <div class="table-scroll"><table>
+        <thead><tr><th>Máy</th><th>Serial</th><th>Địa chỉ IP</th><th>Báo cáo gần nhất</th><th>Vì sao chưa gắn</th><th></th></tr></thead>
+        <tbody>
+          ${pending.map(g => `
+            <tr>
+              <td class="wrap">${machine(g)}</td>
+              <td class="mono muted">${g.serial_number ? esc(g.serial_number) : "Không đọc được"}</td>
+              <td class="mono muted">${esc(g.ip_address || g.remote_ip || "")}</td>
+              <td class="mono muted">${seen(g)}</td>
+              <td class="reason">${esc(g.pending_reason || "")}</td>
+              <td><div class="row-actions">
+                ${canCreate && g.last_seen ? btn("create", g, "Tạo tài sản", true) : ""}
+                ${canLink ? btn("link", g, "Gắn vào tài sản có sẵn") : ""}
+                ${canManage ? btn("revoke", g, "Thu hồi") : ""}
+              </div></td>
+            </tr>`).join("") || emptyRow(6, "Không có máy nào đang chờ. Máy do agent báo cáo mà chưa khớp được với tài sản nào sẽ hiện ở đây.")}
+        </tbody>
+      </table></div>
+    </section>
+
+    <section class="panel table-panel">
+      <div class="toolbar"><h2>Agent đang báo cáo cho tài sản (${linked.length})</h2></div>
+      <div class="table-scroll"><table>
+        <thead><tr><th>Máy</th><th>Tài sản</th><th>Gắn nhờ</th><th>Địa chỉ IP</th><th>Bản agent</th><th>Báo cáo gần nhất</th><th></th></tr></thead>
+        <tbody>
+          ${linked.map(g => `
+            <tr>
+              <td class="wrap">${machine(g)}</td>
+              <td><a class="tape" href="#/assets/${g.asset.id}">${esc(g.asset.asset_tag)}</a></td>
+              <td class="muted">${esc(MATCHED_BY[g.matched_by] || "")}</td>
+              <td class="mono muted">${esc(g.ip_address || g.remote_ip || "")}</td>
+              <td class="mono muted">${esc(g.agent_version || "")}</td>
+              <td class="mono muted">${seen(g)}</td>
+              <td><div class="row-actions">
+                ${canLink ? btn("unlink", g, "Bỏ gắn") : ""}
+                ${canManage ? btn("revoke", g, "Thu hồi") : ""}
+              </div></td>
+            </tr>`).join("") || emptyRow(7, "Chưa có agent nào gắn với tài sản.")}
+        </tbody>
+      </table></div>
+    </section>
+
+    ${canManage ? `
+    <section class="panel">
+      <h2>Cài agent lên máy mới</h2>
+      <form id="code-form" class="inline-form" novalidate>
+        <label for="c-name"><span>Tên gợi nhớ cho mã kết nạp <span class="req">*</span></span>
+          <input id="c-name" name="name" maxlength="150" placeholder="VD: Đợt cài phòng Kế toán tháng 12">
+        </label>
+        <button class="btn btn-primary">Tạo mã kết nạp</button>
+      </form>
+      ${newCode ? `
+      <div class="secret" id="new-code">
+        <div>Mã kết nạp "${esc(newCode.name)}". <strong>Mã chỉ hiện một lần này</strong>, hãy chép lại trước khi rời trang:</div>
+        <div class="secret-code">${esc(newCode.code)}</div>
+        ${installSteps(newCode.code)}
+        <small class="field-hint">Một mã dùng được cho nhiều máy cho tới khi bị thu hồi. Lệnh run chạy mãi và tự gửi báo cáo theo chu kỳ; muốn gửi một lần rồi thoát thì thêm --once.</small>
+      </div>` : `
+      <details class="install field-hint" style="margin-top:14px">
+        <summary>Các lệnh cài agent</summary>
+        ${installSteps("MÃ_KẾT_NẠP")}
+        <p style="margin-top:10px">Thay MÃ_KẾT_NẠP bằng mã vừa tạo, dán nguyên mã, không thêm dấu ngoặc hay dấu nháy.</p>
+      </details>`}
+    </section>
+
+    <section class="panel table-panel">
+      <div class="toolbar"><h2>Mã kết nạp</h2></div>
+      <div class="table-scroll"><table>
+        <thead><tr><th>Tên</th><th>Mã</th><th>Người tạo</th><th>Ngày tạo</th><th>Số agent đã kết nạp</th><th>Trạng thái</th><th></th></tr></thead>
+        <tbody>
+          ${codes.map(c => `
+            <tr>
+              <td class="wrap">${esc(c.name)}</td>
+              <td class="mono muted">${esc(c.hint)}…</td>
+              <td>${esc(c.created_by.full_name)}</td>
+              <td class="mono muted">${esc(fmtDate(c.created_at))}</td>
+              <td class="mono">${c.agent_count}</td>
+              <td>${c.revoked_at ? `<span class="led s-archived">Đã thu hồi</span>` : `<span class="led s-ready">Đang dùng được</span>`}</td>
+              <td class="right">${c.revoked_at ? "" : `<button class="btn btn-sm" data-act="revoke-code" data-id="${c.id}">Thu hồi</button>`}</td>
+            </tr>`).join("") || emptyRow(7, "Chưa có mã kết nạp nào.")}
+        </tbody>
+      </table></div>
+    </section>` : ""}
+
+    ${revoked.length ? `
+    <section class="panel table-panel">
+      <div class="toolbar"><h2>Agent đã thu hồi (${revoked.length})</h2></div>
+      <div class="table-scroll"><table>
+        <thead><tr><th>Máy</th><th>Ngày kết nạp</th><th>Báo cáo cuối</th><th></th></tr></thead>
+        <tbody>
+          ${revoked.map(g => `
+            <tr>
+              <td class="wrap">${machine(g)}</td>
+              <td class="mono muted">${esc(fmtDate(g.enrolled_at))}</td>
+              <td class="mono muted">${seen(g)}</td>
+              <td class="right">${canManage ? btn("delete", g, "Xóa khỏi danh sách") : ""}</td>
+            </tr>`).join("")}
+        </tbody>
+      </table></div>
+    </section>` : ""}`;
+
+  const reload = () => viewAgents().catch(showError);
+  const codeForm = $app.querySelector("#code-form");
+  if (codeForm) {
+    watchFieldErrors(codeForm);
+    codeForm.onsubmit = async e => {
+      e.preventDefault();
+      if (!checkFields(codeForm, [{ name: "name", label: "tên gợi nhớ", required: true }])) return;
+      try {
+        const created = await api("/enrollment-codes", { method: "POST", body: formData(codeForm) });
+        await viewAgents(created);
+        document.getElementById("new-code")?.scrollIntoView({ block: "center" });
+      } catch (err) {
+        showFormError(codeForm, err);
+      }
+    };
+  }
+
+  $app.querySelectorAll("[data-act]").forEach(el => (el.onclick = async () => {
+    const act = el.dataset.act, id = Number(el.dataset.id);
+    const g = agents.find(x => x.id === id);
+    const name = g ? (g.hostname || `agent số ${g.id}`) : "";
+    try {
+      if (act === "create") {
+        if (!confirm(`Tạo một tài sản mới từ máy ${name}? Serial, hãng và model lấy theo báo cáo của máy; sau đó sửa lại được như mọi tài sản.`)) return;
+        const done = await api(`/agents/${id}/asset`, { method: "POST" });
+        toast(`Đã tạo tài sản ${done.asset.asset_tag} từ máy ${name}`);
+        location.hash = `#/assets/${done.asset.id}`;
+        return;
+      }
+      if (act === "link") {
+        const tag = prompt(`Máy ${name} là tài sản nào? Nhập mã tài sản (ví dụ TS-000001):`);
+        if (!tag || !tag.trim()) return;
+        const done = await api(`/agents/${id}/link`, { method: "POST", body: { asset_tag: tag.trim() } });
+        toast(`Đã gắn máy ${name} vào tài sản ${done.asset.asset_tag}`);
+      } else if (act === "unlink") {
+        if (!confirm(`Bỏ gắn máy ${name} khỏi tài sản ${g.asset.asset_tag}? Hồ sơ kỹ thuật agent đã ghi cho tài sản này sẽ bị xóa; máy quay về danh sách chờ xác nhận.`)) return;
+        await api(`/agents/${id}/unlink`, { method: "POST" });
+        toast(`Đã bỏ gắn máy ${name}`);
+      } else if (act === "revoke") {
+        if (!confirm(`Thu hồi agent trên máy ${name}? Từ giờ báo cáo của nó bị từ chối; muốn dùng lại phải kết nạp lại bằng một mã kết nạp.`)) return;
+        await api(`/agents/${id}/revoke`, { method: "POST" });
+        toast(`Đã thu hồi agent trên máy ${name}`);
+      } else if (act === "delete") {
+        await api(`/agents/${id}`, { method: "DELETE" });
+        toast(`Đã xóa agent ${name} khỏi danh sách`);
+      } else if (act === "revoke-code") {
+        const c = codes.find(x => x.id === id);
+        if (!confirm(`Thu hồi mã kết nạp "${c.name}"? Không kết nạp thêm được máy nào bằng mã này. ${c.agent_count} agent đã kết nạp vẫn hoạt động bình thường.`)) return;
+        await api(`/enrollment-codes/${id}/revoke`, { method: "POST" });
+        toast(`Đã thu hồi mã kết nạp "${c.name}"`);
+      }
+    } catch (err) {
+      showError(err);
+    }
+    reload();
+  }));
+}
+
 // ===================== Điều hướng (hash router) =====================
 // Phần tử thứ ba (nếu có) là quyền cần có để mở trang
 const routes = [
@@ -1153,6 +1413,7 @@ const routes = [
   [/^#\/employees\/(\d+)$/, m => viewEmployee(Number(m[1])), "asset.view_all"],
   [/^#\/locations$/, () => viewSimple(SIMPLE.locations), "asset.view_all"],
   [/^#\/categories$/, () => viewSimple(SIMPLE.categories), "asset.view_all"],
+  [/^#\/agents$/, () => viewAgents(), "asset.view_all"],
   [/^#\/users$/, () => viewUsers(), "user.manage"],
   [/^#\/settings$/, () => viewSettings()],
 ];

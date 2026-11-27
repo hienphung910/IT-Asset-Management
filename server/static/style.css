@@ -423,6 +423,27 @@ dl.info dd { margin: 0; word-break: break-word; font-weight: 500; }
 .toast.error { background: var(--danger); color: var(--on-danger); }
 .error { color: var(--danger); }
 
+/* ===================== Agent và hồ sơ kỹ thuật ===================== */
+.codebox {
+  margin: 0; padding: 12px 14px; overflow-x: auto;
+  font: 500 12.5px/1.7 var(--font-mono); white-space: pre;
+  background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-ctl);
+}
+.codebox .c { color: var(--muted); }
+.secret { display: flex; flex-direction: column; gap: 12px; padding: 16px; margin-top: 16px; border: 1px dashed var(--line-strong); border-radius: var(--r-ctl); }
+.secret-code { font: 600 15px/1.4 var(--font-mono); word-break: break-all; user-select: all; }
+.install summary { cursor: pointer; font-weight: 500; }
+.install[open] summary { margin-bottom: 12px; }
+.panel-gap { display: flex; flex-direction: column; gap: 16px; }
+td.reason { white-space: normal; min-width: 240px; max-width: 420px; font-size: 13px; color: var(--muted); }
+.warn { color: var(--led-maintenance); font-weight: 500; }
+dl.info dd ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
+.software summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
+.software .table-scroll { max-height: 360px; overflow-y: auto; margin-top: 10px; border: 1px solid var(--line); border-radius: var(--r-ctl); }
+.software th { position: sticky; top: 0; }
+.software td { padding: 7px 12px; font-size: 13px; white-space: normal; word-break: break-word; }
+.software input { margin-top: 10px; max-width: 320px; }
+
 /* ===================== Màn hình nhỏ ===================== */
 @media (max-width: 1100px) {
   .userbox-text { display: none; }   /* thanh trên hẹp: menu tài khoản chỉ còn ô chữ cái đầu */
