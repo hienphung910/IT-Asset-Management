@@ -267,10 +267,7 @@ let listRequest = 0;
 async function viewAssetList() {
   $app.innerHTML = `
     <div class="page-head">
-      <div>
-        <h1>Tài sản</h1>
-        <p class="subtitle">Xem ai đang giữ thiết bị nào và thiết bị đang ở trạng thái gì.</p>
-      </div>
+      <h1>Tài sản</h1>
       ${can("manageAssets") ? `<a class="btn btn-primary" href="#/assets/new">+ Thêm tài sản</a>` : ""}
     </div>
     <section class="panel fleet" id="fleet" aria-label="Tổng quan theo trạng thái"></section>
@@ -595,17 +592,17 @@ async function viewAssetDetail(id) {
 // ===================== Danh mục / Vị trí / Nhân viên (danh sách + thêm/sửa) =====================
 const SIMPLE = {
   categories: {
-    title: "Danh mục", subtitle: "Nhóm thiết bị như Laptop, PC, Màn hình.", path: "/categories", perm: "manageCatalog",
+    title: "Danh mục", path: "/categories", perm: "manageCatalog",
     noun: "danh mục", labelField: "name",
     fields: [{ name: "name", label: "Tên danh mục", required: true, max: 100 }],
   },
   locations: {
-    title: "Vị trí", subtitle: "Nơi đặt thiết bị hoặc phòng ban nhận tài sản.", path: "/locations", perm: "manageCatalog",
+    title: "Vị trí", path: "/locations", perm: "manageCatalog",
     noun: "vị trí", labelField: "name",
     fields: [{ name: "name", label: "Tên vị trí / phòng ban", required: true, max: 150 }],
   },
   employees: {
-    title: "Nhân viên", subtitle: "Người nhận và chịu trách nhiệm tài sản.", path: "/employees", perm: "manageEmployees",
+    title: "Nhân viên", path: "/employees", perm: "manageEmployees",
     noun: "nhân viên", labelField: "full_name",
     link: "#/employees/", linkField: "full_name",
     fields: [
@@ -624,7 +621,7 @@ async function viewSimple(cfg) {
 
   $app.innerHTML = `
     <div class="page-head">
-      <div><h1>${cfg.title}</h1><p class="subtitle">${cfg.subtitle}</p></div>
+      <h1>${cfg.title}</h1>
     </div>
     ${editable ? `<form id="sform" class="panel inline-form" novalidate>
       ${cfg.fields.map(f => `
@@ -773,9 +770,7 @@ function viewAuth(mode, username = "", notice = "") {
     <div class="auth">
       <div>
         <h1>${isLogin ? "Đăng nhập" : "Đăng ký tài khoản"}</h1>
-        <p class="subtitle">${isLogin
-          ? "Đăng nhập để xem tài sản và người đang giữ."
-          : "Tài khoản mới cần admin duyệt rồi mới đăng nhập được."}</p>
+        ${isLogin ? "" : `<p class="subtitle">Tài khoản mới cần admin duyệt rồi mới đăng nhập được.</p>`}
       </div>
       <form id="auth-form" class="panel auth-form" novalidate>
         ${notice ? `<p class="note-hint">${esc(notice)}</p>` : ""}
@@ -844,7 +839,7 @@ function viewAuth(mode, username = "", notice = "") {
 function viewSettings() {
   $app.innerHTML = `
     <div class="page-head">
-      <div><h1>Cài đặt</h1><p class="subtitle">Thông tin tài khoản, mật khẩu và giao diện.</p></div>
+      <h1>Cài đặt</h1>
     </div>
     <div class="settings">
       <form id="profile-form" class="panel" novalidate>
@@ -959,7 +954,7 @@ async function viewUsers() {
 
   $app.innerHTML = `
     <div class="page-head">
-      <div><h1>Tài khoản</h1><p class="subtitle">Duyệt yêu cầu đăng ký, đổi vai trò và khóa tài khoản.</p></div>
+      <h1>Tài khoản</h1>
     </div>
     <section class="panel table-panel">
       <div class="table-scroll"><table>
