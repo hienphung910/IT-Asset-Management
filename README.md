@@ -22,7 +22,7 @@
 |---|---|
 | Quản trị hệ thống | Toàn quyền: thêm và sửa tài sản, đổi trạng thái, danh mục, vị trí, duyệt, khóa, đổi vai trò tài khoản |
 | Quản trị hạ tầng | Xem toàn bộ. Các quyền riêng (cấu hình quét, chạy script từ xa) đã khai báo sẵn cho các module sau |
-| Quản lý tài sản | Xem toàn bộ, thêm và sửa nhân viên, cấp phát và thu hồi tài sản |
+| Quản lý tài sản | Xem toàn bộ, thêm và sửa tài sản, đổi trạng thái (kể cả thanh lý), cấp phát và thu hồi, thêm và sửa nhân viên |
 | Helpdesk | Xem toàn bộ, để tra cứu thiết bị và lịch sử của người báo lỗi |
 | Kiểm toán | Xem toàn bộ, không sửa gì |
 | Nhân viên | Chỉ xem tài sản đang giao cho chính mình |
