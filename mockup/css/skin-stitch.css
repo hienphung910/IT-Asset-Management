@@ -1,0 +1,276 @@
+/* Giao diện theo trang mẫu Stitch ("Enterprise ITAM & ITSM Workspace", xem DESIGN.md của bản Stitch).
+   Bật khi <html> có lớp skin-stitch (mặc định). Chỉ có bản sáng.
+   Thanh bên navy #0F172A, màu chính #2563EB, chữ Inter cho mọi cấp chữ, viền mảnh #E2E8F0, không đổ bóng ở thẻ. */
+
+html.skin-stitch {
+  color-scheme: light;
+  --bg: #F8FAFC;
+  --surface: #FFFFFF;
+  --surface-2: #F1F5F9;
+  --line: #E2E8F0;
+  --line-strong: #CBD5E1;
+  --ctl-border: #CBD5E1;
+  --ink: #0F172A;
+  --muted: #64748B;
+  --body: #334155;
+
+  --primary: #2563EB;
+  --primary-hover: #1D4ED8;
+  --primary-tint: #EFF6FF;
+  --nav-bg: #0F172A;
+  --nav-active: #1E293B;
+  --nav-ink: #94A3B8;
+
+  --tape: #EFF6FF;
+  --tape-edge: #BFDBFE;
+  --tape-ink: #1D4ED8;
+
+  --btn-bg: #2563EB;
+  --btn-fg: #FFFFFF;
+  --btn-hover: #1D4ED8;
+
+  --led-ready: #10B981;
+  --led-deployed: #2563EB;
+  --led-maintenance: #F59E0B;
+  --led-broken: #EF4444;
+  --led-archived: #64748B;
+  --led-lost: #7C3AED;
+
+  --ok: #10B981;
+  --info: #2563EB;
+  --warn: #F59E0B;
+  --bad: #EF4444;
+  --mute: #64748B;
+
+  --danger: #DC2626;
+  --on-danger: #FFFFFF;
+  --toast-bg: #0F172A;
+  --toast-fg: #FFFFFF;
+  --overlay: rgba(15, 23, 42, .6);
+
+  --font-display: "Inter", "Segoe UI", system-ui, sans-serif;
+  --font-body: "Inter", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "Inter", "Segoe UI", system-ui, sans-serif;
+  --r-tag: 4px;
+  --r-ctl: 4px;
+  --r-panel: 8px;
+  --side-w: 256px;
+}
+
+.skin-stitch body { font-size: 14px; line-height: 1.57; color: var(--body); font-feature-settings: "tnum" 1, "cv11" 1; }
+.skin-stitch h1 { font: 700 28px/36px var(--font-display); letter-spacing: -.02em; color: var(--ink); }
+.skin-stitch h2 { font: 600 12px/16px var(--font-body); letter-spacing: .02em; text-transform: uppercase; color: var(--muted); }
+.skin-stitch h3 { color: var(--ink); }
+.skin-stitch b, .skin-stitch strong, .skin-stitch .strong { color: var(--ink); }
+.skin-stitch a { color: var(--primary); text-decoration: none; }
+.skin-stitch a:hover { text-decoration: underline; }
+.skin-stitch code { background: var(--surface-2); color: var(--ink); }
+.skin-stitch pre { background: #0F172A; color: #E2E8F0; border-color: #0F172A; font-family: "JetBrains Mono", Consolas, monospace; }
+.skin-stitch :focus-visible { outline: 2px solid var(--primary); }
+
+/* ---------- Thanh bên navy ---------- */
+.skin-stitch .side { background: var(--nav-bg); border-right: 1px solid #0B1222; }
+.skin-stitch .side-brand { padding: 14px 18px 16px; border-bottom: 1px solid #1E293B; gap: 12px; }
+.skin-stitch .side-brand .tape {
+  background: var(--primary); color: #fff; box-shadow: none; border: none;
+  width: 34px; height: 34px; padding: 0; justify-content: center; font-size: 11px; letter-spacing: .02em; border-radius: 6px;
+}
+.skin-stitch .side-brand .brand-sub { color: #fff; font: 700 14px/1.2 var(--font-body); text-transform: none; letter-spacing: -.01em; }
+.skin-stitch .side nav { padding: 8px 10px 24px; }
+.skin-stitch .nav-group { margin-top: 6px; }
+.skin-stitch .nav-group > button { color: #E2E8F0; font: 700 11.5px/1.3 var(--font-body); letter-spacing: .04em; padding: 9px 8px; }
+.skin-stitch .nav-group > button .icon { color: #64748B; }
+.skin-stitch .nav-group.closed > button { color: #CBD5E1; }
+.skin-stitch .nav-item { color: var(--nav-ink); font-size: 13px; padding: 7px 10px 7px 12px; border-radius: 4px; }
+.skin-stitch .nav-item .icon { color: #64748B; }
+.skin-stitch .nav-item:hover { background: #1E293B; color: #fff; text-decoration: none; }
+.skin-stitch .nav-item.active { background: var(--nav-active); color: #fff; box-shadow: inset 3px 0 0 var(--primary); font-weight: 600; }
+.skin-stitch .nav-item.active .icon { color: #fff; }
+.skin-stitch .nav-item .count { background: #F59E0B; color: #0F172A; border-radius: 9px; }
+.skin-stitch .nav-item .count.bad { background: var(--bad); color: #fff; }
+
+/* ---------- Thanh trên ---------- */
+.skin-stitch .topbar { height: 56px; background: #fff; border-bottom: 1px solid var(--line); }
+.skin-stitch .global-search input { background: #F8FAFC; height: 36px; border-color: var(--line-strong); }
+.skin-stitch .topbar select.unit { background-color: #fff; height: 36px; border-color: var(--line-strong); }
+.skin-stitch [data-theme-cycle] { display: none; }
+.skin-stitch .icon-btn { color: #475569; }
+.skin-stitch .icon-btn .dot { background: var(--bad); }
+.skin-stitch .user-chip .who b { color: var(--ink); }
+.skin-stitch .user-chip .tile { background: var(--primary); color: #fff; border-color: var(--primary); border-radius: 50%; }
+.skin-stitch .user-chip:hover { text-decoration: none; }
+
+/* ---------- Khung trang ---------- */
+.skin-stitch .content { padding: 24px 24px 64px; max-width: 1440px; gap: 16px; }
+.skin-stitch .crumb { font: 600 11.5px/16px var(--font-body); letter-spacing: .03em; text-transform: uppercase; color: var(--muted); }
+.skin-stitch .crumb b { color: var(--primary); }
+.skin-stitch .crumb span { margin: 0 4px; }
+.skin-stitch .back { font: 600 11.5px var(--font-body); letter-spacing: .03em; color: var(--muted); }
+.skin-stitch .page-head .sub { color: var(--muted); }
+
+/* ---------- Thẻ, panel ---------- */
+.skin-stitch .panel { border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+.skin-stitch .panel-head { border-bottom: 1px solid var(--line); padding: 12px 16px; }
+.skin-stitch .panel-head h2 { font: 600 15px/22px var(--font-body); letter-spacing: -.01em; text-transform: none; color: var(--ink); }
+.skin-stitch .panel-foot { font: 500 12.5px var(--font-body); background: #F8FAFC; }
+.skin-stitch .stat { border: 1px solid var(--line); border-top: 1px solid var(--line); border-left: 3px solid var(--c, var(--line-strong)); border-radius: 8px; background: #fff; padding: 14px 16px; }
+.skin-stitch a.stat:hover { border-color: var(--line-strong); border-left-color: var(--c, var(--line-strong)); text-decoration: none; }
+.skin-stitch .stat .lbl { font: 600 11px/14px var(--font-body); letter-spacing: .04em; color: var(--muted); }
+.skin-stitch .stat .val { font: 700 28px/34px var(--font-display); letter-spacing: -.02em; color: var(--ink); }
+.skin-stitch .t-accent { --c: var(--primary); }
+
+/* ---------- Mã tài sản (băng nhãn → chip xanh) ---------- */
+.skin-stitch .tape {
+  background: var(--tape); color: var(--tape-ink); border: 1px solid var(--tape-edge); box-shadow: none;
+  font: 600 12px/1 var(--font-body); letter-spacing: .01em; padding: 4px 7px; border-radius: 4px;
+}
+.skin-stitch a.tape:hover { box-shadow: none; background: #DBEAFE; text-decoration: none; }
+.skin-stitch .tape-xl { font-size: 15px; padding: 6px 10px; }
+
+/* ---------- Nhãn trạng thái: chấm 8px + chữ hoa nhỏ trên nền nhạt ---------- */
+.skin-stitch .led {
+  gap: 6px; padding: 3px 8px; border-radius: 4px;
+  font: 600 11px/16px var(--font-body); letter-spacing: .04em; text-transform: uppercase;
+  color: color-mix(in srgb, var(--c) 72%, #000); background: color-mix(in srgb, var(--c) 10%, #fff);
+}
+.skin-stitch .led::before { width: 7px; height: 7px; box-shadow: none; }
+.skin-stitch .legend .led { background: none; padding: 0; text-transform: none; letter-spacing: 0; font-weight: 500; font-size: 12.5px; color: var(--body); }
+.skin-stitch .pill {
+  border-radius: 4px; padding: 3px 8px; font: 600 11px/16px var(--font-body); letter-spacing: .04em; text-transform: uppercase;
+  color: color-mix(in srgb, var(--c, var(--mute)) 72%, #000); background: color-mix(in srgb, var(--c, var(--mute)) 10%, #fff);
+  border: 1px solid color-mix(in srgb, var(--c, var(--mute)) 25%, #fff);
+}
+.skin-stitch .pill.solid { background: var(--c); color: #fff; border-color: var(--c); }
+
+/* ---------- Bảng dày đặc ---------- */
+.skin-stitch th {
+  font: 600 11.5px/16px var(--font-body); letter-spacing: .03em; text-transform: uppercase; color: var(--muted);
+  background: #F8FAFC; border-bottom: 2px solid var(--line); padding: 10px 14px;
+}
+.skin-stitch td { padding: 11px 14px; border-bottom: 1px solid #F1F5F9; color: var(--body); }
+.skin-stitch .cell-name { color: var(--ink); }
+.skin-stitch tr[data-href]:hover td { background: #F8FAFC; }
+.skin-stitch tr.sel td { background: var(--primary-tint); }
+.skin-stitch tr.sel td:first-child { box-shadow: inset 2px 0 0 var(--primary); }
+.skin-stitch .toolbar { border-bottom: 1px solid var(--line); }
+.skin-stitch .bulkbar { background: var(--primary-tint); color: var(--ink); border-bottom: 1px solid var(--tape-edge); }
+.skin-stitch .bulkbar .n { color: var(--primary); }
+.skin-stitch .empty { color: var(--muted); }
+
+/* ---------- Tab ---------- */
+.skin-stitch .tabs { border-bottom: 1px solid var(--line); }
+.skin-stitch .tabs button { font: 500 13.5px var(--font-body); color: var(--muted); padding: 11px 14px; }
+.skin-stitch .tabs button.active { color: var(--primary); border-bottom-color: var(--primary); font-weight: 600; }
+.skin-stitch .tabs .n { font: 600 11px var(--font-body); background: var(--surface-2); color: var(--muted); padding: 1px 6px; border-radius: 9px; }
+.skin-stitch .tabs button.active .n { background: var(--primary-tint); color: var(--primary); }
+.skin-stitch .seg { border-color: var(--line-strong); }
+.skin-stitch .seg button { background: #fff; color: var(--body); border-left-color: var(--line-strong); height: 32px; }
+.skin-stitch .seg button.active { background: var(--primary-tint); color: var(--primary); font-weight: 600; }
+
+/* ---------- Nút, ô nhập ---------- */
+.skin-stitch .btn { height: 36px; padding: 0 14px; border-radius: 4px; font: 500 13.5px var(--font-body); color: #334155; background: #fff; border: 1px solid var(--line-strong); }
+.skin-stitch .btn:hover { background: #F1F5F9; color: var(--ink); text-decoration: none; }
+.skin-stitch .btn-primary { background: var(--primary); border-color: var(--primary); color: #fff; font-weight: 600; }
+.skin-stitch .btn-primary:hover { background: var(--primary-hover); border-color: var(--primary-hover); color: #fff; }
+.skin-stitch .btn-danger { background: #FEF2F2; color: #DC2626; border-color: #FCA5A5; }
+.skin-stitch .btn-danger:hover { background: #DC2626; color: #fff; filter: none; }
+.skin-stitch .btn-ghost { border-color: transparent; background: transparent; color: var(--primary); }
+.skin-stitch .btn-sm { height: 30px; font-size: 12.5px; padding: 0 10px; }
+.skin-stitch .linklike { color: var(--primary); text-decoration: none; }
+.skin-stitch input, .skin-stitch select, .skin-stitch textarea { border-color: var(--line-strong); font: 400 14px var(--font-body); color: var(--ink); height: 36px; }
+.skin-stitch textarea { height: auto; }
+.skin-stitch input[type="checkbox"], .skin-stitch input[type="radio"] { height: 16px; accent-color: var(--primary); }
+.skin-stitch input:focus, .skin-stitch select:focus, .skin-stitch textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary); }
+.skin-stitch label, .skin-stitch .field { color: #334155; font-weight: 500; }
+.skin-stitch .form-section { font: 600 11px var(--font-body); letter-spacing: .04em; }
+.skin-stitch .req { color: #DC2626; }
+
+/* ---------- Ghi chú, khung cần chốt ---------- */
+.skin-stitch .note { border-radius: 6px; border-color: color-mix(in srgb, var(--c, var(--info)) 30%, #fff); background: color-mix(in srgb, var(--c, var(--info)) 7%, #fff); color: var(--body); }
+.skin-stitch .cc { border-radius: 6px; }
+
+/* ---------- Tiến độ, biểu đồ ---------- */
+.skin-stitch .progress { height: 6px; background: #E2E8F0; }
+.skin-stitch .hbar .v, .skin-stitch .vbars .col small { font-family: var(--font-body); }
+.skin-stitch .hbar .track { height: 8px; background: #F1F5F9; border-radius: 4px; }
+.skin-stitch .stackbar { height: 10px; border-radius: 5px; }
+.skin-stitch .steps li::before { font-family: var(--font-body); border-color: var(--line-strong); }
+.skin-stitch .steps li.cur::before { background: var(--primary); border-color: var(--primary); color: #fff; }
+.skin-stitch .steps li.done::before { background: var(--ok); border-color: var(--ok); }
+
+/* ---------- Nhật ký, bình luận, người ---------- */
+.skin-stitch .log time { font: 500 12px/1.45 var(--font-body); }
+.skin-stitch .log li { border-top: 1px solid #F1F5F9; }
+.skin-stitch .msg .bubble { border-radius: 8px; }
+.skin-stitch .msg.internal .bubble { background: #FFFBEB; border-color: #FCD34D; }
+.skin-stitch .tile { border-radius: 50%; background: #E2E8F0; border-color: #E2E8F0; color: #334155; font: 600 10.5px/1 var(--font-body); }
+.skin-stitch .tile-lg { border-radius: 12px; background: var(--primary-tint); color: var(--primary); }
+.skin-stitch dl.kv dt { color: var(--muted); }
+.skin-stitch dl.kv dd { color: var(--ink); }
+
+/* ---------- Hộp thoại, thông báo nhanh ---------- */
+.skin-stitch .modal { border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 20px 25px -5px rgba(15, 23, 42, .12), 0 8px 10px -6px rgba(15, 23, 42, .06); }
+.skin-stitch .modal-head h3 { font: 600 18px/26px var(--font-body); letter-spacing: -.01em; }
+.skin-stitch .modal-foot { background: #F8FAFC; }
+
+/* ---------- Đăng nhập ---------- */
+.skin-stitch .auth-art { background: var(--nav-bg); }
+.skin-stitch .auth-art .tape { background: var(--primary); color: #fff; border: none; }
+.skin-stitch .auth-art h1 { font-size: 40px; line-height: 48px; color: #fff; }
+.skin-stitch .auth-art p { color: #94A3B8; }
+
+/* ---------- Mục nhỏ khác ---------- */
+.skin-stitch .chip { border-color: var(--line-strong); border-radius: 4px; }
+.skin-stitch .chip.on { background: var(--primary); border-color: var(--primary); }
+.skin-stitch .graph .node.focus rect { fill: var(--primary-tint); stroke: var(--primary); }
+.skin-stitch .viewfinder::before { border-color: var(--primary); }
+.skin-stitch .kbd { font-family: var(--font-body); }
+
+/* =====================================================================
+   Chế độ chụp sang Figma (index.html?capture): không có dải mockup,
+   thanh bên và thanh trên không dính để khung chụp đủ chiều cao.
+   ===================================================================== */
+body.capture .app { min-height: 100vh; }
+body.capture .side { position: relative; top: 0; height: auto; min-height: 100vh; }
+body.capture .topbar { position: relative; top: 0; }
+body.capture .auth { min-height: 100vh; }
+body.capture .toast { display: none !important; }
+
+/* Mũi tên của ô chọn: dùng SVG thay cho dải gradient để ảnh chụp sang Figma không bị vẽ lệch */
+.skin-stitch select {
+  background-color: #fff;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748B' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-position: right 10px center; background-size: 12px 12px; background-repeat: no-repeat;
+}
+.skin-stitch .mockbar select { background-color: #FFF8D6; }
+
+/* Khoảng thở rộng hơn để trang bớt rối */
+.skin-stitch .content { gap: 20px; padding: 28px 32px 72px; }
+.skin-stitch .page-head { padding-bottom: 4px; }
+.skin-stitch .page-head .titles { gap: 6px; }
+.skin-stitch .grid, .skin-stitch .stack, .skin-stitch .side-layout { gap: 20px; }
+.skin-stitch .stats { gap: 16px; }
+.skin-stitch .panel-body { padding: 20px; }
+.skin-stitch .panel-head { padding: 14px 20px; }
+.skin-stitch th { padding: 10px 16px; }
+.skin-stitch td { padding: 12px 16px; }
+.skin-stitch dl.kv { gap: 12px 24px; }
+.skin-stitch .cell-sub { color: #94A3B8; }
+.skin-stitch .info-tip { color: #94A3B8; }
+.skin-stitch .info-tip:hover { color: var(--primary); background: var(--primary-tint); }
+/* Cột nhãn của khối thông tin co theo bề rộng panel để giá trị không bị bóp ở cột hẹp */
+.skin-stitch dl.kv { grid-template-columns: minmax(96px, 38%) minmax(0, 1fr); }
+.skin-stitch .side-layout > .stack dl.kv { grid-template-columns: minmax(96px, 42%) minmax(0, 1fr); gap: 10px 16px; }
+/* Bảng nằm trong cột hẹp (lưới 2 cột, cột phụ): cho chữ xuống dòng thay vì hiện thanh cuộn ngang */
+.skin-stitch .grid td, .skin-stitch .side-layout td { white-space: normal; }
+.skin-stitch .grid td .pill, .skin-stitch .side-layout td .pill, .skin-stitch .grid td .led, .skin-stitch .side-layout td .led { white-space: normal; }
+.skin-stitch .grid td .tape, .skin-stitch .side-layout td .tape { white-space: nowrap; }
+/* Mọi ô bảng được xuống dòng để bảng vừa khung, trừ mã, nhãn trạng thái và nút */
+.skin-stitch td { white-space: normal; }
+.skin-stitch td .tape, .skin-stitch td .btn, .skin-stitch td .mono { white-space: nowrap; }
+.skin-stitch td .pill, .skin-stitch td .led { white-space: normal; }
+.skin-stitch td .btn + .btn { margin-top: 4px; }
+.skin-stitch th { white-space: normal; }
+.skin-stitch .cell-name { min-width: 120px; }
+.skin-stitch .pill { max-width: 100%; white-space: normal; }
+.skin-stitch .grid td, .skin-stitch .grid th, .skin-stitch .side-layout td, .skin-stitch .side-layout th { padding-left: 10px; padding-right: 10px; }

@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Mockup ITAM</title>
+  <script>
+    // Áp giao diện đã chọn trước khi vẽ trang (dùng chung khóa với ứng dụng thật)
+    try {
+      var t = localStorage.getItem("itam-theme");
+      if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+      // Giao diện Stitch (mặc định) chỉ có bản sáng
+      if (localStorage.getItem("itam-mock-skin") !== "classic") { document.documentElement.classList.add("skin-stitch"); document.documentElement.dataset.theme = "light"; }
+    } catch (e) { document.documentElement.classList.add("skin-stitch"); }
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@700&family=Be+Vietnam+Pro:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="css/mockup.css">
+  <link rel="stylesheet" href="css/skin-stitch.css">
+</head>
+<body>
+  <div id="root"><p style="padding:24px">Đang tải mockup…</p></div>
+  <div id="modal-root"></div>
+  <div id="toast" class="toast" role="status" hidden></div>
+
+  <!-- Lõi và dữ liệu dùng chung -->
+  <script src="js/core.js"></script>
+  <script src="js/data.js"></script>
+  <script src="js/coverage.js"></script>
+  <!-- Màn hình theo module (mỗi file tự khai báo dữ liệu mẫu riêng) -->
+  <script src="js/screens-common.js"></script>
+  <script src="js/screens-assets.js"></script>
+  <script src="js/screens-discovery.js"></script>
+  <script src="js/screens-software.js"></script>
+  <script src="js/screens-service.js"></script>
+  <script src="js/screens-portal.js"></script>
+  <script src="js/screens-finance.js"></script>
+  <script src="js/screens-automation.js"></script>
+  <script src="js/screens-reports.js"></script>
+  <script src="js/screens-admin.js"></script>
+  <script>M.start();</script>
+</body>
+</html>
