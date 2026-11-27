@@ -5,3 +5,4 @@ pymysql>=1.1
 cryptography>=42      # PyMySQL cần khi đăng nhập MySQL 8 (caching_sha2_password)
 python-dotenv>=1.0
 qrcode[pil]>=7.4
+argon2-cffi>=23.1    # băm mật khẩu tài khoản (Argon2id)

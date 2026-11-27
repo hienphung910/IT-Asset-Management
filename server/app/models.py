@@ -14,6 +14,16 @@ BROKEN = "broken"            # Hỏng / Chờ thanh lý
 ARCHIVED = "archived"        # Đã thanh lý
 STATUSES = [READY, DEPLOYED, MAINTENANCE, BROKEN, ARCHIVED]
 
+# Vai trò tài khoản đăng nhập
+ROLE_ADMIN = "admin"      # Toàn quyền, kể cả quản lý tài khoản
+ROLE_MANAGER = "manager"  # Quản lý nhân viên, cấp phát và thu hồi tài sản
+ROLE_STAFF = "staff"      # Chỉ xem
+
+# Trạng thái tài khoản
+USER_ACTIVE = "active"      # Đăng nhập được
+USER_PENDING = "pending"    # Mới đăng ký, chờ admin duyệt
+USER_DISABLED = "disabled"  # Bị admin khóa
+
 
 class Category(Base):
     __tablename__ = "category"
@@ -37,6 +47,33 @@ class Employee(Base):
     full_name: Mapped[str] = mapped_column(String(150))
     email: Mapped[str | None] = mapped_column(String(150))
     department: Mapped[str | None] = mapped_column(String(100))
+
+
+class User(Base):
+    """Tài khoản đăng nhập. Tách khỏi Employee: nhân viên giữ tài sản chưa chắc có tài khoản."""
+
+    __tablename__ = "user"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    username: Mapped[str] = mapped_column(String(50), unique=True)  # luôn lưu chữ thường
+    full_name: Mapped[str] = mapped_column(String(150))
+    password_hash: Mapped[str] = mapped_column(String(255))
+    role: Mapped[str] = mapped_column(String(20), default=ROLE_STAFF)
+    status: Mapped[str] = mapped_column(String(20), default=USER_ACTIVE)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=text("CURRENT_TIMESTAMP"))
+
+
+class UserSession(Base):
+    """Phiên đăng nhập. Chỉ lưu mã băm của token; token thật nằm trong cookie của trình duyệt."""
+
+    __tablename__ = "user_session"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("user.id"), index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+
+    user: Mapped[User] = relationship(lazy="joined")
 
 
 class Asset(Base):
@@ -87,7 +124,9 @@ class CustodyLog(Base):
     employee_id: Mapped[int | None] = mapped_column(ForeignKey("employee.id"))
     location_id: Mapped[int | None] = mapped_column(ForeignKey("location.id"))
     note: Mapped[str | None] = mapped_column(Text)
+    actor_id: Mapped[int | None] = mapped_column(ForeignKey("user.id"))  # tài khoản đã thao tác
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=text("CURRENT_TIMESTAMP"))
 
     employee: Mapped[Employee | None] = relationship(lazy="selectin")
     location: Mapped[Location | None] = relationship(lazy="selectin")
+    actor: Mapped[User | None] = relationship(lazy="selectin")

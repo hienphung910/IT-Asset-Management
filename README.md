@@ -11,7 +11,22 @@
 - Mỗi lần thêm, sửa, cấp phát, thu hồi hay đổi trạng thái đều được ghi vào nhật ký của tài sản đó.
 - Mỗi tài sản có mã QR và tem để in dán lên thiết bị.
 - Kiểm tra dữ liệu nhập: email phải đúng dạng và không trùng giữa hai nhân viên, họ tên không chứa số, mã và serial không được trùng.
-- Giao diện có chế độ sáng, tối, hoặc tự theo cài đặt của máy.
+- Giao diện mặc định theo cài đặt sáng/tối của máy; sau khi đăng nhập có thể đổi sang sáng hoặc tối trong trang Cài đặt.
+- Phải đăng nhập mới dùng được, và mỗi tài khoản có một trong ba vai trò (xem bảng dưới). Nhật ký của tài sản ghi cả tài khoản đã thao tác.
+
+## Tài khoản và vai trò
+
+| Vai trò | Được làm gì | Cách có tài khoản |
+|---|---|---|
+| Nhân viên | Chỉ xem | Tự đăng ký, chờ admin duyệt rồi mới đăng nhập được |
+| Quản lý | Xem, thêm và sửa nhân viên, cấp phát và thu hồi tài sản | Tự đăng ký, chờ admin duyệt rồi mới đăng nhập được |
+| Admin | Toàn quyền: thêm và sửa tài sản, đổi trạng thái, danh mục, vị trí, duyệt, khóa và đổi vai trò tài khoản | Tài khoản đầu tiên lấy từ `.env`; các admin sau do admin khác cấp ở trang Tài khoản |
+
+Tài khoản đăng nhập khác với mục Nhân viên trên menu: Nhân viên là danh sách người nhận tài sản, không cần có tài khoản.
+
+Bấm vào tên mình ở góc phải thanh trên để mở menu tài khoản: mục Cài đặt cho đổi họ tên, đổi mật khẩu và chọn giao diện; Đăng xuất cũng nằm ở đây.
+
+Tài khoản đã từng thao tác trên tài sản thì không xóa được, chỉ khóa được, để nhật ký luôn còn tên người làm.
 
 ## Công nghệ
 
@@ -35,7 +50,7 @@ Máy cần có Python 3.10 trở lên, MySQL 8.0 (và mật khẩu của user `r
    .venv\Scripts\python -m pip install -r requirements.txt
    ```
 
-3. Tạo file cấu hình từ file mẫu, sau đó mở `.env` và điền mật khẩu MySQL vào dòng `DB_PASSWORD=`:
+3. Tạo file cấu hình từ file mẫu, sau đó mở `.env`, điền mật khẩu MySQL vào dòng `DB_PASSWORD=` và đặt mật khẩu cho tài khoản admin đầu tiên ở dòng `ADMIN_PASSWORD=` (ít nhất 8 ký tự):
 
    ```powershell
    Copy-Item .env.example .env
@@ -55,9 +70,11 @@ Máy cần có Python 3.10 trở lên, MySQL 8.0 (và mật khẩu của user `r
    .venv\Scripts\python -m uvicorn app.main:app --reload --port 8000
    ```
 
-6. Mở http://127.0.0.1:8000 trên trình duyệt. Ở lần chạy đầu, server tự tạo database `itam`, các bảng và 5 danh mục mặc định. Tài liệu API tự sinh nằm ở http://127.0.0.1:8000/docs.
+6. Mở http://127.0.0.1:8000 trên trình duyệt. Ở lần chạy đầu, server tự tạo database `itam`, các bảng, 5 danh mục mặc định và tài khoản admin. Đăng nhập bằng `ADMIN_USERNAME` (mặc định là `admin`) và `ADMIN_PASSWORD` đã đặt trong `.env`. Tài liệu API tự sinh nằm ở http://127.0.0.1:8000/docs.
 
 Nếu server dừng với thông báo "Không kết nối được MySQL", hãy kiểm tra MySQL đã bật chưa và mật khẩu trong `.env` có đúng không.
+
+Nếu server dừng với thông báo "Hệ thống chưa có tài khoản admin", hãy điền `ADMIN_PASSWORD` trong `.env` rồi chạy lại. Hai dòng `ADMIN_...` chỉ được dùng khi database chưa có admin nào; sửa chúng về sau không đổi mật khẩu của tài khoản đã tạo.
 
 Trên macOS hoặc Linux, thay `.venv\Scripts\python` bằng `.venv/bin/python`, và thay `Copy-Item` bằng `cp`.
 

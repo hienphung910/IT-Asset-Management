@@ -15,3 +15,7 @@ DB_NAME = os.getenv("DB_NAME", "itam")
 
 # Tùy chọn: ghi đè toàn bộ chuỗi kết nối (VD: sqlite:///test.db để chạy thử không cần MySQL)
 DATABASE_URL = os.getenv("DATABASE_URL")
+
+# Tài khoản admin đầu tiên, chỉ dùng khi hệ thống chưa có admin nào
+ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin").strip().lower()
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "").strip()

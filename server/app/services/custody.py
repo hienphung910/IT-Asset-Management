@@ -5,7 +5,7 @@ Mỗi hàm đổi tài sản + ghi custody_log rồi commit một lần (cùng 1
 from sqlalchemy.orm import Session
 
 from ..models import (
-    ARCHIVED, DEPLOYED, READY, Asset, CustodyLog, Employee, Location,
+    ARCHIVED, DEPLOYED, READY, Asset, CustodyLog, Employee, Location, User,
 )
 
 STATUS_LABELS = {
@@ -26,16 +26,17 @@ class BusinessError(Exception):
         self.status_code = status_code
 
 
-def add_log(db: Session, asset: Asset, action: str, from_status: str | None,
+def add_log(db: Session, asset: Asset, actor: User, action: str, from_status: str | None,
             to_status: str | None, employee_id: int | None = None,
             location_id: int | None = None, note: str | None = None) -> None:
+    """actor là tài khoản đang thao tác; bắt buộc để nhật ký luôn biết ai đã làm."""
     db.add(CustodyLog(
         asset_id=asset.id, action=action, from_status=from_status, to_status=to_status,
-        employee_id=employee_id, location_id=location_id, note=note,
+        employee_id=employee_id, location_id=location_id, note=note, actor_id=actor.id,
     ))
 
 
-def checkout(db: Session, asset: Asset, employee_id: int | None,
+def checkout(db: Session, asset: Asset, actor: User, employee_id: int | None,
              location_id: int | None, note: str | None) -> Asset:
     if asset.status != READY:
         raise BusinessError(
@@ -50,13 +51,13 @@ def checkout(db: Session, asset: Asset, employee_id: int | None,
     asset.status = DEPLOYED
     asset.assigned_employee_id = employee_id
     asset.assigned_location_id = location_id
-    add_log(db, asset, "checkout", READY, DEPLOYED, employee_id, location_id, note)
+    add_log(db, asset, actor, "checkout", READY, DEPLOYED, employee_id, location_id, note)
     db.commit()
     db.refresh(asset)
     return asset
 
 
-def checkin(db: Session, asset: Asset, new_status: str, note: str | None) -> Asset:
+def checkin(db: Session, asset: Asset, actor: User, new_status: str, note: str | None) -> Asset:
     if asset.status != DEPLOYED:
         raise BusinessError("Tài sản này chưa được cấp phát nên không thu hồi được.")
 
@@ -65,13 +66,13 @@ def checkin(db: Session, asset: Asset, new_status: str, note: str | None) -> Ass
     asset.status = new_status
     asset.assigned_employee_id = None
     asset.assigned_location_id = None
-    add_log(db, asset, "checkin", DEPLOYED, new_status, prev_employee, prev_location, note)
+    add_log(db, asset, actor, "checkin", DEPLOYED, new_status, prev_employee, prev_location, note)
     db.commit()
     db.refresh(asset)
     return asset
 
 
-def change_status(db: Session, asset: Asset, new_status: str, note: str | None) -> Asset:
+def change_status(db: Session, asset: Asset, actor: User, new_status: str, note: str | None) -> Asset:
     if asset.status == DEPLOYED:
         raise BusinessError("Tài sản đang được cấp phát. Thu hồi trước rồi mới đổi trạng thái.")
     if asset.status == ARCHIVED:
@@ -81,7 +82,7 @@ def change_status(db: Session, asset: Asset, new_status: str, note: str | None) 
 
     old_status = asset.status
     asset.status = new_status
-    add_log(db, asset, "status", old_status, new_status, note=note)
+    add_log(db, asset, actor, "status", old_status, new_status, note=note)
     db.commit()
     db.refresh(asset)
     return asset

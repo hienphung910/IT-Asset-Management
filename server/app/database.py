@@ -72,3 +72,32 @@ def init_db() -> None:
         if db.scalar(select(models.Category.id).limit(1)) is None:
             db.add_all(models.Category(name=n) for n in DEFAULT_CATEGORIES)
             db.commit()
+        _ensure_admin(db)
+
+
+def _ensure_admin(db) -> None:
+    """Tạo tài khoản admin đầu tiên từ .env. Không có admin thì không ai duyệt được tài khoản."""
+    from . import models
+    from .schemas import USERNAME_RE
+    from .services.auth import MIN_PASSWORD_LENGTH, hash_password
+
+    if db.scalar(select(models.User.id).where(models.User.role == models.ROLE_ADMIN).limit(1)):
+        return
+    if len(config.ADMIN_PASSWORD) < MIN_PASSWORD_LENGTH:
+        raise RuntimeError(
+            "Hệ thống chưa có tài khoản admin. Thêm ADMIN_PASSWORD "
+            f"(ít nhất {MIN_PASSWORD_LENGTH} ký tự) vào server/.env rồi chạy lại server."
+        )
+    if not USERNAME_RE.fullmatch(config.ADMIN_USERNAME):
+        raise RuntimeError("ADMIN_USERNAME trong server/.env không hợp lệ (3-50 ký tự: chữ thường, số, . _ -).")
+    if db.scalar(select(models.User.id).where(models.User.username == config.ADMIN_USERNAME)):
+        raise RuntimeError(
+            f'Tên đăng nhập "{config.ADMIN_USERNAME}" đã thuộc về một tài khoản không phải admin. '
+            "Đổi ADMIN_USERNAME trong server/.env rồi chạy lại server."
+        )
+    db.add(models.User(
+        username=config.ADMIN_USERNAME, full_name="Quản trị viên",
+        password_hash=hash_password(config.ADMIN_PASSWORD),
+        role=models.ROLE_ADMIN, status=models.USER_ACTIVE,
+    ))
+    db.commit()

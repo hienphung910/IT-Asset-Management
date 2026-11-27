@@ -11,6 +11,26 @@ const STATUS = {
 };
 const $app = document.getElementById("app");
 
+// ===================== Tài khoản & quyền =====================
+const ROLES = { admin: "Admin", manager: "Quản lý", staff: "Nhân viên" };
+// Trạng thái tài khoản: [màu đèn, nhãn]
+const USER_STATUS = {
+  active: ["ready", "Đang hoạt động"],
+  pending: ["maintenance", "Chờ duyệt"],
+  disabled: ["archived", "Đã khóa"],
+};
+// Vai trò nào được làm gì. Chỉ để ẩn/hiện nút; server mới là nơi chặn thật
+// (require_admin / require_manager trong app/routes). Sửa ở đây thì sửa cả ở đó.
+const PERMS = {
+  manageAssets: ["admin"],                // thêm/sửa tài sản, đổi trạng thái
+  manageCatalog: ["admin"],               // danh mục, vị trí
+  manageEmployees: ["admin", "manager"],  // thêm/sửa nhân viên
+  custody: ["admin", "manager"],          // cấp phát, thu hồi
+  manageUsers: ["admin"],                 // duyệt, khóa, đổi vai trò tài khoản
+};
+let me = null;  // tài khoản đang đăng nhập
+const can = perm => !!me && PERMS[perm].includes(me.role);
+
 // Chỉ giữ vài icon thật sự giúp nhận biết (tìm kiếm, vị trí)
 const ICONS = {
   search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
@@ -114,13 +134,16 @@ function toast(message, isError = false) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => (el.hidden = true), isError ? 5000 : 2500);
 }
-const showError = err => toast(err.message, true);
+// Lỗi "chưa đăng nhập" đã được xử lý bằng cách hiện màn đăng nhập, không cần báo thêm
+const showError = err => { if (!err.authRequired) toast(err.message, true); };
 
 // Lỗi kiểm tra dữ liệu từ server (tiếng Anh) → câu tiếng Việt dễ hiểu
 const FIELD_LABELS = {
   name: "Tên", asset_tag: "Mã tài sản", serial_number: "Serial", manufacturer: "Hãng sản xuất",
   model: "Model", category_id: "Danh mục", code: "Mã NV", full_name: "Họ tên", email: "Email",
   department: "Phòng ban", status: "Trạng thái", note: "Ghi chú", notes: "Ghi chú",
+  username: "Tên đăng nhập", password: "Mật khẩu", role: "Vai trò",
+  current_password: "Mật khẩu hiện tại", new_password: "Mật khẩu mới",
 };
 function validationMessage(e) {
   const field = FIELD_LABELS[e.loc?.[e.loc.length - 1]] || "";
@@ -128,7 +151,7 @@ function validationMessage(e) {
     case "missing":
     case "string_type": return field ? `Chưa nhập ${field}.` : "Còn thiếu thông tin bắt buộc.";
     case "string_too_long": return `${field} dài quá ${e.ctx?.max_length} ký tự.`;
-    case "literal_error": return "Trạng thái không hợp lệ.";
+    case "literal_error": return `${field || "Giá trị"} không hợp lệ.`;
     case "value_error": return e.msg.replace(/^Value error, /, "");
     default: return field ? `${field} không hợp lệ.` : "Dữ liệu gửi lên không hợp lệ.";
   }
@@ -160,6 +183,10 @@ async function api(path, { method = "GET", body } = {}) {
     }
     const err = new Error(message);
     err.fieldErrors = fieldErrors;
+    if (res.status === 401) {  // chưa đăng nhập, phiên hết hạn hoặc tài khoản vừa bị khóa
+      err.authRequired = true;
+      requireLogin();
+    }
     throw err;
   }
   return data;
@@ -171,6 +198,8 @@ const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/;
 const emailRule = v => EMAIL_RE.test(v) ? null : "Email không hợp lệ. Nhập theo dạng ten@congty.vn.";
 // Họ tên: chỉ chữ cái (có dấu), khoảng trắng và ' - . (server tự gộp khoảng trắng thừa)
 const fullNameRule = v => /^[\p{L}\p{M} '.-]+$/u.test(v.normalize("NFC")) ? null : "Họ tên không được chứa số hoặc ký tự đặc biệt.";
+const usernameRule = v => /^[a-z0-9._-]{3,50}$/.test(v.toLowerCase()) ? null : "Tên đăng nhập dài 3-50 ký tự, chỉ gồm chữ không dấu, số và các dấu . _ -";
+const passwordRule = v => v.length >= 8 ? null : "Mật khẩu cần ít nhất 8 ký tự.";
 
 function markInvalid(input, message, focus) {
   input.setAttribute("aria-invalid", "true");
@@ -242,7 +271,7 @@ async function viewAssetList() {
         <h1>Tài sản</h1>
         <p class="subtitle">Xem ai đang giữ thiết bị nào và thiết bị đang ở trạng thái gì.</p>
       </div>
-      <a class="btn btn-primary" href="#/assets/new">+ Thêm tài sản</a>
+      ${can("manageAssets") ? `<a class="btn btn-primary" href="#/assets/new">+ Thêm tài sản</a>` : ""}
     </div>
     <section class="panel fleet" id="fleet" aria-label="Tổng quan theo trạng thái"></section>
     <section class="panel table-panel">
@@ -319,7 +348,8 @@ async function refreshAssets() {
       <td>${led(a.status)}</td>
       <td>${holder(a)}</td>
     </tr>`).join("") ||
-    emptyRow(5, hasFilter ? "Không có tài sản nào khớp bộ lọc." : 'Chưa có tài sản nào. Bấm "+ Thêm tài sản" để nhập thiết bị đầu tiên.');
+    emptyRow(5, hasFilter ? "Không có tài sản nào khớp bộ lọc."
+      : can("manageAssets") ? 'Chưa có tài sản nào. Bấm "+ Thêm tài sản" để nhập thiết bị đầu tiên.' : "Chưa có tài sản nào.");
 
   const pages = Math.max(1, Math.ceil(data.total / data.size));
   const from = data.total ? (data.page - 1) * data.size + 1 : 0;
@@ -401,11 +431,16 @@ function statusChangeForm(a) {
     </form>`;
 }
 
+// Chỉ hiện thao tác mà vai trò đang đăng nhập được làm. Trả về "" nếu không có gì để hiện.
 function actionPanel(a, employees, locations) {
+  const canCustody = can("custody");       // cấp phát, thu hồi: quản lý trở lên
+  const canStatus = can("manageAssets");   // đổi trạng thái: chỉ admin
+  if (!canCustody && !canStatus) return "";
   if (a.status === "archived") {
     return `<p class="note-hint">Tài sản đã thanh lý, không còn thao tác nào.</p>`;
   }
   if (a.status === "deployed") {
+    if (!canCustody) return "";
     return `
       <form data-action="checkin" class="inline-form">
         <label for="act-checkin"><span>Trạng thái sau khi thu hồi</span>
@@ -415,12 +450,17 @@ function actionPanel(a, employees, locations) {
         <button class="btn btn-primary">Thu hồi</button>
       </form>`;
   }
-  if (a.status !== "ready") return statusChangeForm(a);
+  if (a.status !== "ready") {
+    return canStatus ? statusChangeForm(a)
+      : `<p class="note-hint">Tài sản đang ở trạng thái ${esc(STATUS[a.status])} nên chưa cấp phát được. Chỉ admin đổi được trạng thái.</p>`;
+  }
 
-  const checkout = (!employees.length && !locations.length)
-    ? `<p class="note-hint">Chưa có nhân viên hay vị trí nào để cấp phát.
-         <a href="#/employees">Thêm nhân viên</a> hoặc <a href="#/locations">thêm vị trí</a> trước.</p>`
-    : `
+  let checkout = "";
+  if (canCustody) {
+    checkout = (!employees.length && !locations.length)
+      ? `<p class="note-hint">Chưa có nhân viên hay vị trí nào để cấp phát.
+           <a href="#/employees">Thêm nhân viên</a>${can("manageCatalog") ? ` hoặc <a href="#/locations">thêm vị trí</a>` : ""} trước.</p>`
+      : `
       <form data-action="checkout" class="inline-form">
         <label for="act-target"><span>Cấp phát cho</span>
           <select id="act-target" name="target" required>
@@ -436,7 +476,8 @@ function actionPanel(a, employees, locations) {
         <label for="act-target-note"><span>Ghi chú</span><input id="act-target-note" name="note" placeholder="Không bắt buộc"></label>
         <button class="btn btn-primary">Cấp phát</button>
       </form>`;
-  return `${checkout}<hr class="divider">${statusChangeForm(a)}`;
+  }
+  return [checkout, canStatus ? statusChangeForm(a) : ""].filter(Boolean).join(`<hr class="divider">`);
 }
 
 function logItem(h) {
@@ -458,6 +499,7 @@ function logItem(h) {
         <div class="log-title">${esc(title)}</div>
         ${statuses}
         ${h.note && h.action !== "update" ? `<div class="log-note">${esc(h.note)}</div>` : ""}
+        <div class="log-actor">Thực hiện bởi ${h.actor ? `${esc(h.actor.full_name)} (${esc(h.actor.username)})` : "không rõ"}</div>
       </div>
     </li>`;
 }
@@ -466,6 +508,7 @@ async function viewAssetDetail(id) {
   const [a, history, employees, locations] = await Promise.all([
     api(`/assets/${id}`), api(`/assets/${id}/history`), api("/employees"), api("/locations"),
   ]);
+  const actions = actionPanel(a, employees, locations);
 
   $app.innerHTML = `
     <div>
@@ -476,7 +519,7 @@ async function viewAssetDetail(id) {
           <h1>${esc(a.name)}</h1>
           ${led(a.status)}
         </div>
-        ${a.status !== "archived" ? `<a class="btn" href="#/assets/${a.id}/edit">Sửa thông tin</a>` : ""}
+        ${a.status !== "archived" && can("manageAssets") ? `<a class="btn" href="#/assets/${a.id}/edit">Sửa thông tin</a>` : ""}
       </div>
     </div>
     <div class="detail-grid">
@@ -492,7 +535,7 @@ async function viewAssetDetail(id) {
             <dt>Ngày thêm</dt><dd class="mono">${fmtDate(a.created_at)}</dd>
           </dl>
         </section>
-        <section class="panel"><h2>Thao tác</h2>${actionPanel(a, employees, locations)}</section>
+        ${actions ? `<section class="panel"><h2>Thao tác</h2>${actions}</section>` : ""}
         <section class="panel">
           <h2>Nhật ký lưu ký</h2>
           ${history.length ? `<ol class="log">${history.map(logItem).join("")}</ol>`
@@ -530,7 +573,7 @@ async function viewAssetDetail(id) {
         body = { note: f.note, [kind === "e" ? "employee_id" : "location_id"]: Number(targetId) };
       } else {
         body = { status: f.status, note: f.note };
-        if (f.status === "archived" &&
+        if (action === "status" && f.status === "archived" &&
             !confirm(`Chuyển ${a.asset_tag} sang "Đã thanh lý"? Sau bước này không đổi lại được trạng thái.`)) return;
       }
       try {
@@ -552,17 +595,17 @@ async function viewAssetDetail(id) {
 // ===================== Danh mục / Vị trí / Nhân viên (danh sách + thêm/sửa) =====================
 const SIMPLE = {
   categories: {
-    title: "Danh mục", subtitle: "Nhóm thiết bị như Laptop, PC, Màn hình.", path: "/categories",
+    title: "Danh mục", subtitle: "Nhóm thiết bị như Laptop, PC, Màn hình.", path: "/categories", perm: "manageCatalog",
     noun: "danh mục", labelField: "name",
     fields: [{ name: "name", label: "Tên danh mục", required: true, max: 100 }],
   },
   locations: {
-    title: "Vị trí", subtitle: "Nơi đặt thiết bị hoặc phòng ban nhận tài sản.", path: "/locations",
+    title: "Vị trí", subtitle: "Nơi đặt thiết bị hoặc phòng ban nhận tài sản.", path: "/locations", perm: "manageCatalog",
     noun: "vị trí", labelField: "name",
     fields: [{ name: "name", label: "Tên vị trí / phòng ban", required: true, max: 150 }],
   },
   employees: {
-    title: "Nhân viên", subtitle: "Người nhận và chịu trách nhiệm tài sản.", path: "/employees",
+    title: "Nhân viên", subtitle: "Người nhận và chịu trách nhiệm tài sản.", path: "/employees", perm: "manageEmployees",
     noun: "nhân viên", labelField: "full_name",
     link: "#/employees/", linkField: "full_name",
     fields: [
@@ -576,35 +619,37 @@ const SIMPLE = {
 
 async function viewSimple(cfg) {
   const items = await api(cfg.path);
+  const editable = can(cfg.perm);  // không có quyền sửa thì chỉ hiện bảng
   let editingId = null;
 
   $app.innerHTML = `
     <div class="page-head">
       <div><h1>${cfg.title}</h1><p class="subtitle">${cfg.subtitle}</p></div>
     </div>
-    <form id="sform" class="panel inline-form" novalidate>
+    ${editable ? `<form id="sform" class="panel inline-form" novalidate>
       ${cfg.fields.map(f => `
         <label for="s-${f.name}"><span>${f.label}${f.required ? ' <span class="req">*</span>' : ""}</span>
           <input id="s-${f.name}" name="${f.name}" maxlength="${f.max}" ${f.required ? "required" : ""} ${f.inputmode ? `inputmode="${f.inputmode}" autocomplete="off"` : ""}>
         </label>`).join("")}
       <button class="btn btn-primary" id="ssave">Thêm</button>
       <button type="button" class="btn" id="scancel" hidden>Hủy</button>
-    </form>
+    </form>` : ""}
     <section class="panel table-panel">
       <div class="table-scroll"><table>
-        <thead><tr>${cfg.fields.map(f => `<th>${f.label}</th>`).join("")}<th></th></tr></thead>
+        <thead><tr>${cfg.fields.map(f => `<th>${f.label}</th>`).join("")}${editable ? "<th></th>" : ""}</tr></thead>
         <tbody>
           ${items.map(it => `
             <tr>
               ${cfg.fields.map(f => `<td>${f.name === cfg.linkField
                 ? `<a class="holder" href="${cfg.link}${it.id}"><span class="tile">${esc(initials(it[f.name]))}</span><span class="holder-name">${esc(it[f.name])}</span></a>`
                 : `<span class="${f.mono ? "mono" : f.name === "name" ? "" : "muted"}">${it[f.name] ? esc(it[f.name]) : "Chưa có"}</span>`}</td>`).join("")}
-              <td class="right"><button class="btn btn-sm" data-edit="${it.id}">Sửa</button></td>
-            </tr>`).join("") || emptyRow(cfg.fields.length + 1, `Chưa có ${cfg.noun} nào.`)}
+              ${editable ? `<td class="right"><button class="btn btn-sm" data-edit="${it.id}">Sửa</button></td>` : ""}
+            </tr>`).join("") || emptyRow(cfg.fields.length + (editable ? 1 : 0), `Chưa có ${cfg.noun} nào.`)}
         </tbody>
       </table></div>
     </section>`;
 
+  if (!editable) return;
   const form = $app.querySelector("#sform");
   const saveBtn = $app.querySelector("#ssave");
   const cancelBtn = $app.querySelector("#scancel");
@@ -680,19 +725,335 @@ async function viewEmployee(id) {
   bindRowLinks($app.querySelector("tbody"));
 }
 
+// ===================== Đăng nhập / đăng ký =====================
+let authScreen = false;  // đang hiện màn đăng nhập hoặc đăng ký
+
+// Thanh trên: ẩn menu khi chưa đăng nhập, ẩn mục không có quyền, hiện tài khoản đang dùng
+function renderChrome() {
+  document.querySelector(".nav").hidden = !me;
+  document.querySelectorAll("[data-perm]").forEach(el => (el.hidden = !can(el.dataset.perm)));
+  const box = document.getElementById("userbox");
+  box.hidden = !me;
+  box.open = false;
+  box.innerHTML = me ? `
+    <summary aria-label="Menu tài khoản" title="${esc(me.full_name)} · ${ROLES[me.role]}">
+      <span class="tile">${esc(initials(me.full_name))}</span>
+      <span class="userbox-text">
+        <span class="userbox-name">${esc(me.full_name)}</span>
+        <span class="role">${ROLES[me.role]}</span>
+      </span>
+    </summary>
+    <div class="usermenu-list">
+      <a href="#/settings">Cài đặt</a>
+      <hr>
+      <button type="button" id="logout">Đăng xuất</button>
+    </div>` : "";
+  if (me) box.querySelector("#logout").onclick = logout;
+}
+
+async function logout() {
+  try { await api("/auth/logout", { method: "POST" }); } catch (err) { showError(err); return; }
+  requireLogin();
+}
+
+// Gọi khi server trả 401. Không đổi location.hash, nên đăng nhập xong sẽ quay lại đúng
+// trang đang mở dở (ví dụ trang tài sản vừa quét từ tem QR).
+function requireLogin() {
+  if (authScreen) return;
+  me = null;
+  renderChrome();
+  viewAuth("login");
+}
+
+function viewAuth(mode, username = "", notice = "") {
+  authScreen = true;
+  const isLogin = mode === "login";
+  const req = ' <span class="req">*</span>';
+  $app.innerHTML = `
+    <div class="auth">
+      <div>
+        <h1>${isLogin ? "Đăng nhập" : "Đăng ký tài khoản"}</h1>
+        <p class="subtitle">${isLogin
+          ? "Đăng nhập để xem tài sản và người đang giữ."
+          : "Tài khoản mới cần admin duyệt rồi mới đăng nhập được."}</p>
+      </div>
+      <form id="auth-form" class="panel auth-form" novalidate>
+        ${notice ? `<p class="note-hint">${esc(notice)}</p>` : ""}
+        ${isLogin ? "" : `<label for="a-full_name"><span>Họ tên${req}</span><input id="a-full_name" name="full_name" maxlength="150" autocomplete="name"></label>`}
+        <label for="a-username"><span>Tên đăng nhập${isLogin ? "" : req}</span>
+          <input id="a-username" name="username" maxlength="50" autocomplete="username" autocapitalize="none" spellcheck="false" value="${esc(username)}">
+        </label>
+        <label for="a-password"><span>Mật khẩu${isLogin ? "" : req}</span>
+          <input id="a-password" name="password" type="password" maxlength="128" autocomplete="${isLogin ? "current-password" : "new-password"}">
+        </label>
+        ${isLogin ? "" : `
+        <label for="a-password2"><span>Nhập lại mật khẩu${req}</span>
+          <input id="a-password2" name="password2" type="password" maxlength="128" autocomplete="new-password">
+        </label>
+        <label for="a-role"><span>Vai trò</span>
+          <select id="a-role" name="role">
+            <option value="staff">Nhân viên</option>
+            <option value="manager">Quản lý</option>
+          </select>
+          <small class="field-hint">Nhân viên chỉ xem. Quản lý được thêm, sửa nhân viên và cấp phát, thu hồi tài sản.</small>
+        </label>`}
+        <button class="btn btn-primary">${isLogin ? "Đăng nhập" : "Đăng ký"}</button>
+      </form>
+      <p class="muted">${isLogin ? "Chưa có tài khoản?" : "Đã có tài khoản?"}
+        <button type="button" class="linklike" id="auth-switch">${isLogin ? "Đăng ký" : "Đăng nhập"}</button></p>
+    </div>`;
+
+  const form = $app.querySelector("#auth-form");
+  watchFieldErrors(form);
+  $app.querySelector("#auth-switch").onclick = () => viewAuth(isLogin ? "register" : "login");
+  form.elements[isLogin ? (username ? "password" : "username") : "full_name"].focus();
+
+  form.onsubmit = async e => {
+    e.preventDefault();
+    const rules = isLogin
+      ? [{ name: "username", label: "Tên đăng nhập", required: true },
+         { name: "password", label: "Mật khẩu", required: true }]
+      : [{ name: "full_name", label: "Họ tên", required: true, validate: fullNameRule },
+         { name: "username", label: "Tên đăng nhập", required: true, validate: usernameRule },
+         { name: "password", label: "Mật khẩu", required: true, validate: passwordRule },
+         { name: "password2", label: "lại mật khẩu", required: true,
+           validate: v => v === form.password.value.trim() ? null : "Hai lần nhập mật khẩu chưa khớp." }];
+    if (!checkFields(form, rules)) return;
+    const f = formData(form);
+    try {
+      if (isLogin) {
+        me = await api("/auth/login", { method: "POST", body: { username: f.username, password: f.password } });
+        authScreen = false;
+        document.getElementById("toast").hidden = true;  // bỏ thông báo lỗi đăng nhập còn sót
+        renderChrome();
+        refreshPendingCount();
+        router();
+      } else {
+        const u = await api("/auth/register", {
+          method: "POST",
+          body: { full_name: f.full_name, username: f.username, password: f.password, role: f.role },
+        });
+        viewAuth("login", u.username, "Đã gửi yêu cầu đăng ký. Bạn đăng nhập được sau khi admin duyệt.");
+      }
+    } catch (err) {
+      showFormError(form, err);
+    }
+  };
+}
+
+// ===================== Cài đặt: thông tin, mật khẩu, giao diện =====================
+function viewSettings() {
+  $app.innerHTML = `
+    <div class="page-head">
+      <div><h1>Cài đặt</h1><p class="subtitle">Thông tin tài khoản, mật khẩu và giao diện.</p></div>
+    </div>
+    <div class="settings">
+      <form id="profile-form" class="panel" novalidate>
+        <h2>Thông tin tài khoản</h2>
+        <div class="form-grid">
+          <label for="p-full_name"><span>Họ tên <span class="req">*</span></span>
+            <input id="p-full_name" name="full_name" maxlength="150" autocomplete="name" value="${esc(me.full_name)}">
+          </label>
+          <label for="p-username"><span>Tên đăng nhập</span>
+            <input id="p-username" class="mono" value="${esc(me.username)}" disabled>
+          </label>
+          <label for="p-role"><span>Vai trò</span>
+            <input id="p-role" value="${ROLES[me.role]}" disabled>
+          </label>
+        </div>
+        <small class="field-hint">Tên đăng nhập không đổi được. Vai trò do admin cấp.</small>
+        <div class="form-actions"><button class="btn btn-primary">Lưu thông tin</button></div>
+      </form>
+
+      <form id="password-form" class="panel" novalidate>
+        <h2>Đổi mật khẩu</h2>
+        <div class="form-grid">
+          <label class="full" for="p-current"><span>Mật khẩu hiện tại <span class="req">*</span></span>
+            <input id="p-current" name="current_password" type="password" maxlength="128" autocomplete="current-password">
+          </label>
+          <label for="p-new"><span>Mật khẩu mới <span class="req">*</span></span>
+            <input id="p-new" name="new_password" type="password" maxlength="128" autocomplete="new-password">
+          </label>
+          <label for="p-new2"><span>Nhập lại mật khẩu mới <span class="req">*</span></span>
+            <input id="p-new2" name="new_password2" type="password" maxlength="128" autocomplete="new-password">
+          </label>
+        </div>
+        <small class="field-hint">Đổi xong, các thiết bị khác đang đăng nhập tài khoản này sẽ bị đăng xuất.</small>
+        <div class="form-actions"><button class="btn btn-primary">Đổi mật khẩu</button></div>
+      </form>
+
+      <section class="panel">
+        <h2>Giao diện</h2>
+        <div class="theme-switch" role="group" aria-label="Giao diện">
+          <button type="button" data-theme-btn="system">Theo hệ thống</button>
+          <button type="button" data-theme-btn="light">Sáng</button>
+          <button type="button" data-theme-btn="dark">Tối</button>
+        </div>
+        <small class="field-hint">Mặc định theo cài đặt sáng/tối của máy. Lựa chọn được lưu trên trình duyệt này.</small>
+      </section>
+    </div>`;
+  applyTheme(getTheme());  // đánh dấu nút đang chọn
+
+  const profile = $app.querySelector("#profile-form");
+  watchFieldErrors(profile);
+  profile.onsubmit = async e => {
+    e.preventDefault();
+    if (!checkFields(profile, [{ name: "full_name", label: "Họ tên", required: true, validate: fullNameRule }])) return;
+    try {
+      me = await api("/auth/me", { method: "PATCH", body: { full_name: profile.full_name.value } });
+      profile.full_name.value = me.full_name;
+      renderChrome();
+      toast("Đã lưu thông tin");
+    } catch (err) {
+      showFormError(profile, err);
+    }
+  };
+
+  const pw = $app.querySelector("#password-form");
+  watchFieldErrors(pw);
+  pw.onsubmit = async e => {
+    e.preventDefault();
+    if (!checkFields(pw, [
+      { name: "current_password", label: "mật khẩu hiện tại", required: true },
+      { name: "new_password", label: "mật khẩu mới", required: true, validate: passwordRule },
+      { name: "new_password2", label: "lại mật khẩu mới", required: true,
+        validate: v => v === pw.new_password.value.trim() ? null : "Hai lần nhập mật khẩu mới chưa khớp." },
+    ])) return;
+    try {
+      await api("/auth/password", {
+        method: "POST",
+        body: { current_password: pw.current_password.value, new_password: pw.new_password.value },
+      });
+      pw.reset();
+      toast("Đã đổi mật khẩu");
+    } catch (err) {
+      showFormError(pw, err);
+    }
+  };
+}
+
+// ===================== Tài khoản (chỉ admin) =====================
+// Số yêu cầu chờ duyệt, hiện cạnh mục "Tài khoản" trên thanh trên
+async function refreshPendingCount(users) {
+  const el = document.getElementById("pending-count");
+  if (!can("manageUsers")) { el.hidden = true; return; }
+  try { users = users || await api("/users"); } catch { return; }
+  const n = users.filter(u => u.status === "pending").length;
+  el.textContent = n;
+  el.title = `${n} tài khoản chờ duyệt`;
+  el.hidden = !n;
+}
+
+async function viewUsers() {
+  const users = await api("/users");
+  refreshPendingCount(users);
+  const order = { pending: 0, active: 1, disabled: 2 };
+  users.sort((a, b) => order[a.status] - order[b.status] || a.username.localeCompare(b.username));
+
+  const actionsFor = u => {
+    if (u.id === me.id) return "";
+    const btn = (act, label, primary) => `<button class="btn btn-sm ${primary ? "btn-primary" : ""}" data-act="${act}" data-id="${u.id}">${label}</button>`;
+    if (u.status === "pending") return btn("approve", "Duyệt", true) + btn("reject", "Từ chối");
+    if (u.status === "active") return btn("lock", "Khóa");
+    return btn("unlock", "Mở khóa") + btn("delete", "Xóa");
+  };
+
+  $app.innerHTML = `
+    <div class="page-head">
+      <div><h1>Tài khoản</h1><p class="subtitle">Duyệt yêu cầu đăng ký, đổi vai trò và khóa tài khoản.</p></div>
+    </div>
+    <section class="panel table-panel">
+      <div class="table-scroll"><table>
+        <thead><tr><th>Họ tên</th><th>Tên đăng nhập</th><th>Vai trò</th><th>Trạng thái</th><th>Ngày đăng ký</th><th></th></tr></thead>
+        <tbody>
+          ${users.map(u => `
+            <tr>
+              <td><span class="holder"><span class="tile">${esc(initials(u.full_name))}</span>${esc(u.full_name)}${u.id === me.id ? '<span class="you">(bạn)</span>' : ""}</span></td>
+              <td class="mono">${esc(u.username)}</td>
+              <td>${u.id === me.id
+                ? `<span class="role role-chip">${ROLES[u.role] || esc(u.role)}</span>`
+                : `<select data-role-for="${u.id}" aria-label="Vai trò của ${esc(u.username)}">
+                     ${Object.keys(ROLES).map(r => `<option value="${r}" ${r === u.role ? "selected" : ""}>${ROLES[r]}</option>`).join("")}
+                   </select>`}</td>
+              <td><span class="led s-${USER_STATUS[u.status]?.[0] || "archived"}">${esc(USER_STATUS[u.status]?.[1] || u.status)}</span></td>
+              <td class="mono muted">${esc(fmtDate(u.created_at))}</td>
+              <td><div class="row-actions">${actionsFor(u)}</div></td>
+            </tr>`).join("")}
+        </tbody>
+      </table></div>
+    </section>`;
+
+  const byId = id => users.find(u => u.id === Number(id));
+  const reload = () => viewUsers().catch(showError);
+  const tbody = $app.querySelector("tbody");
+
+  tbody.onchange = async e => {
+    const sel = e.target.closest("[data-role-for]");
+    if (!sel) return;
+    const u = byId(sel.dataset.roleFor);
+    if (sel.value === "admin" &&
+        !confirm(`Cấp vai trò Admin cho ${u.username}? Admin có toàn quyền, kể cả quản lý tài khoản.`)) {
+      sel.value = u.role;
+      return;
+    }
+    try {
+      await api(`/users/${u.id}`, { method: "PATCH", body: { role: sel.value } });
+      toast(`Đã đổi vai trò của ${u.username} thành ${ROLES[sel.value]}`);
+    } catch (err) {
+      showError(err);
+    }
+    reload();
+  };
+
+  tbody.onclick = async e => {
+    const btn = e.target.closest("[data-act]");
+    if (!btn) return;
+    const u = byId(btn.dataset.id);
+    const act = btn.dataset.act;
+    const ask = {
+      reject: `Từ chối và xóa yêu cầu đăng ký của ${u.username}?`,
+      lock: `Khóa tài khoản ${u.username}? Người này sẽ bị đăng xuất ngay.`,
+      delete: `Xóa hẳn tài khoản ${u.username}? Không khôi phục lại được.`,
+    }[act];
+    if (ask && !confirm(ask)) return;
+    try {
+      if (act === "reject" || act === "delete") {
+        await api(`/users/${u.id}`, { method: "DELETE" });
+      } else {
+        await api(`/users/${u.id}`, { method: "PATCH", body: { status: act === "lock" ? "disabled" : "active" } });
+      }
+      toast({
+        approve: `Đã duyệt tài khoản ${u.username}`,
+        reject: `Đã từ chối yêu cầu của ${u.username}`,
+        lock: `Đã khóa tài khoản ${u.username}`,
+        unlock: `Đã mở khóa tài khoản ${u.username}`,
+        delete: `Đã xóa tài khoản ${u.username}`,
+      }[act]);
+    } catch (err) {
+      showError(err);
+    }
+    reload();
+  };
+}
+
 // ===================== Điều hướng (hash router) =====================
+// Phần tử thứ ba (nếu có) là quyền cần có để mở trang
 const routes = [
   [/^#\/assets$/, () => viewAssetList()],
-  [/^#\/assets\/new$/, () => viewAssetForm(null)],
-  [/^#\/assets\/(\d+)\/edit$/, m => viewAssetForm(Number(m[1]))],
+  [/^#\/assets\/new$/, () => viewAssetForm(null), "manageAssets"],
+  [/^#\/assets\/(\d+)\/edit$/, m => viewAssetForm(Number(m[1])), "manageAssets"],
   [/^#\/assets\/(\d+)$/, m => viewAssetDetail(Number(m[1]))],
   [/^#\/employees$/, () => viewSimple(SIMPLE.employees)],
   [/^#\/employees\/(\d+)$/, m => viewEmployee(Number(m[1]))],
   [/^#\/locations$/, () => viewSimple(SIMPLE.locations)],
   [/^#\/categories$/, () => viewSimple(SIMPLE.categories)],
+  [/^#\/users$/, () => viewUsers(), "manageUsers"],
+  [/^#\/settings$/, () => viewSettings()],
 ];
 
 async function router() {
+  if (!me) { requireLogin(); return; }
+  document.getElementById("userbox").open = false;  // đổi trang thì đóng menu tài khoản
   const hash = location.hash || "#/assets";
   const section = hash.split("/")[1];
   document.querySelectorAll("[data-nav]").forEach(a => {
@@ -701,14 +1062,19 @@ async function router() {
     if (on) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
   });
 
-  for (const [pattern, view] of routes) {
+  for (const [pattern, view, perm] of routes) {
     const m = hash.match(pattern);
     if (m) {
+      if (perm && !can(perm)) {
+        toast("Tài khoản của bạn không có quyền mở trang này.", true);
+        location.hash = "#/assets";
+        return;
+      }
       try {
         await view(m);
         window.scrollTo(0, 0);
       } catch (err) {
-        $app.innerHTML = `<p class="error">${esc(err.message)}</p>`;
+        if (!err.authRequired) $app.innerHTML = `<p class="error">${esc(err.message)}</p>`;
       }
       return;
     }
@@ -717,8 +1083,26 @@ async function router() {
 }
 
 // ===================== Khởi động =====================
+async function start() {
+  try {
+    me = await api("/auth/me");  // 401 thì api() tự hiện màn đăng nhập
+  } catch (err) {
+    if (!err.authRequired) $app.innerHTML = `<p class="error">${esc(err.message)}</p>`;
+    return;
+  }
+  renderChrome();
+  refreshPendingCount();
+  router();
+}
+
 applyTheme(getTheme());
-document.querySelectorAll("[data-theme-btn]").forEach(b =>
-  b.addEventListener("click", () => setTheme(b.dataset.themeBtn)));
+document.addEventListener("click", e => {
+  // Nút chọn giao diện nằm trong trang Cài đặt (vẽ lại mỗi lần mở) nên bắt sự kiện ở document
+  const themeBtn = e.target.closest("[data-theme-btn]");
+  if (themeBtn) setTheme(themeBtn.dataset.themeBtn);
+  // Bấm ra ngoài thì đóng menu tài khoản
+  const menu = document.getElementById("userbox");
+  if (menu.open && !menu.contains(e.target)) menu.open = false;
+});
 window.addEventListener("hashchange", router);
-router();
+start();

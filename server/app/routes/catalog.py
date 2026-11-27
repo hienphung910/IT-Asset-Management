@@ -9,8 +9,13 @@ from ..models import Asset, Category, Employee, Location
 from ..schemas import (
     AssetOut, CategoryIn, CategoryOut, EmployeeIn, EmployeeOut, LocationIn, LocationOut,
 )
+from ..services.auth import current_user, require_admin, require_manager
 
-router = APIRouter(prefix="/api", tags=["catalog"])
+# Mọi route ở đây đều cần đăng nhập. Xem: mọi vai trò; sửa nhân viên: quản lý trở lên;
+# sửa danh mục và vị trí: chỉ admin.
+router = APIRouter(prefix="/api", tags=["catalog"], dependencies=[Depends(current_user)])
+ADMIN_ONLY = [Depends(require_admin)]
+MANAGER_UP = [Depends(require_manager)]
 
 
 def _get_or_404(db: Session, model, obj_id: int, message: str):
@@ -38,14 +43,14 @@ def list_categories(db: Session = Depends(get_db)):
     return db.scalars(select(Category).order_by(Category.name)).all()
 
 
-@router.post("/categories", response_model=CategoryOut, status_code=201)
+@router.post("/categories", response_model=CategoryOut, status_code=201, dependencies=ADMIN_ONLY)
 def create_category(data: CategoryIn, db: Session = Depends(get_db)):
     obj = Category(**data.model_dump())
     db.add(obj)
     return _save(db, obj, f'Đã có danh mục "{data.name}".', "name")
 
 
-@router.put("/categories/{category_id}", response_model=CategoryOut)
+@router.put("/categories/{category_id}", response_model=CategoryOut, dependencies=ADMIN_ONLY)
 def update_category(category_id: int, data: CategoryIn, db: Session = Depends(get_db)):
     obj = _get_or_404(db, Category, category_id, "Không tìm thấy danh mục.")
     obj.name = data.name
@@ -59,14 +64,14 @@ def list_locations(db: Session = Depends(get_db)):
     return db.scalars(select(Location).order_by(Location.name)).all()
 
 
-@router.post("/locations", response_model=LocationOut, status_code=201)
+@router.post("/locations", response_model=LocationOut, status_code=201, dependencies=ADMIN_ONLY)
 def create_location(data: LocationIn, db: Session = Depends(get_db)):
     obj = Location(**data.model_dump())
     db.add(obj)
     return _save(db, obj, f'Đã có vị trí "{data.name}".', "name")
 
 
-@router.put("/locations/{location_id}", response_model=LocationOut)
+@router.put("/locations/{location_id}", response_model=LocationOut, dependencies=ADMIN_ONLY)
 def update_location(location_id: int, data: LocationIn, db: Session = Depends(get_db)):
     obj = _get_or_404(db, Location, location_id, "Không tìm thấy vị trí.")
     obj.name = data.name
@@ -92,7 +97,7 @@ def _check_email_unique(db: Session, email: str | None, exclude_id: int | None =
         })
 
 
-@router.post("/employees", response_model=EmployeeOut, status_code=201)
+@router.post("/employees", response_model=EmployeeOut, status_code=201, dependencies=MANAGER_UP)
 def create_employee(data: EmployeeIn, db: Session = Depends(get_db)):
     _check_email_unique(db, data.email)
     obj = Employee(**data.model_dump())
@@ -105,7 +110,7 @@ def get_employee(employee_id: int, db: Session = Depends(get_db)):
     return _get_or_404(db, Employee, employee_id, "Không tìm thấy nhân viên.")
 
 
-@router.put("/employees/{employee_id}", response_model=EmployeeOut)
+@router.put("/employees/{employee_id}", response_model=EmployeeOut, dependencies=MANAGER_UP)
 def update_employee(employee_id: int, data: EmployeeIn, db: Session = Depends(get_db)):
     obj = _get_or_404(db, Employee, employee_id, "Không tìm thấy nhân viên.")
     _check_email_unique(db, data.email, exclude_id=obj.id)

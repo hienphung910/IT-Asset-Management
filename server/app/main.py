@@ -11,7 +11,7 @@ from sqlalchemy.exc import OperationalError
 
 from .config import SERVER_DIR
 from .database import init_db
-from .routes import assets, catalog
+from .routes import assets, auth, catalog
 from .services.custody import BusinessError
 
 
@@ -35,6 +35,8 @@ async def business_error_handler(request: Request, exc: BusinessError):
     return JSONResponse({"detail": exc.message}, status_code=exc.status_code)
 
 
+app.include_router(auth.router)
+app.include_router(auth.users_router)
 app.include_router(catalog.router)
 app.include_router(assets.router)
 

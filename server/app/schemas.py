@@ -46,6 +46,14 @@ class LocationOut(OutModel):
 EMAIL_RE = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]{2,}")
 
 
+def clean_full_name(v: str) -> str:
+    """Gộp khoảng trắng thừa; chỉ cho chữ cái (có dấu), khoảng trắng và ' - ."""
+    v = re.sub(r"\s+", " ", unicodedata.normalize("NFC", v)).strip()
+    if not all(ch.isalpha() or ch in " '-." for ch in v):
+        raise ValueError("Họ tên không được chứa số hoặc ký tự đặc biệt.")
+    return v
+
+
 class EmployeeIn(InModel):
     code: str = Field(max_length=50)
     full_name: str = Field(max_length=150)
@@ -55,11 +63,7 @@ class EmployeeIn(InModel):
     @field_validator("full_name")
     @classmethod
     def _check_full_name(cls, v: str) -> str:
-        """Gộp khoảng trắng thừa; chỉ cho chữ cái (có dấu), khoảng trắng và ' - ."""
-        v = re.sub(r"\s+", " ", unicodedata.normalize("NFC", v)).strip()
-        if not all(ch.isalpha() or ch in " '-." for ch in v):
-            raise ValueError("Họ tên không được chứa số hoặc ký tự đặc biệt.")
-        return v
+        return clean_full_name(v)
 
     @field_validator("email")
     @classmethod
@@ -78,6 +82,93 @@ class EmployeeOut(OutModel):
     full_name: str
     email: str | None
     department: str | None
+
+
+# ---------- Tài khoản đăng nhập ----------
+
+USERNAME_RE = re.compile(r"[a-z0-9._-]{3,50}")
+MIN_PASSWORD_LENGTH = 8
+
+
+class RegisterIn(InModel):
+    username: str = Field(max_length=50)
+    full_name: str = Field(max_length=150)
+    password: str = Field(max_length=128)
+    # Không có "admin": admin chỉ do admin khác cấp. Trạng thái luôn là chờ duyệt, do server đặt.
+    role: Literal["staff", "manager"] = "staff"
+
+    @field_validator("username")
+    @classmethod
+    def _check_username(cls, v: str) -> str:
+        v = v.lower()
+        if not USERNAME_RE.fullmatch(v):
+            raise ValueError("Tên đăng nhập dài 3-50 ký tự, chỉ gồm chữ không dấu, số và các dấu . _ -")
+        return v
+
+    @field_validator("full_name")
+    @classmethod
+    def _check_full_name(cls, v: str) -> str:
+        return clean_full_name(v)
+
+    @field_validator("password")
+    @classmethod
+    def _check_password(cls, v: str) -> str:
+        if len(v) < MIN_PASSWORD_LENGTH:
+            raise ValueError(f"Mật khẩu cần ít nhất {MIN_PASSWORD_LENGTH} ký tự.")
+        return v
+
+
+class LoginIn(InModel):
+    username: str = Field(max_length=50)
+    password: str = Field(max_length=128)
+
+    @field_validator("username")
+    @classmethod
+    def _lower_username(cls, v: str) -> str:
+        return v.lower()
+
+
+class ProfileIn(InModel):
+    """Người dùng tự sửa thông tin của mình. Tên đăng nhập và vai trò không đổi qua đây."""
+    full_name: str = Field(max_length=150)
+
+    @field_validator("full_name")
+    @classmethod
+    def _check_full_name(cls, v: str) -> str:
+        return clean_full_name(v)
+
+
+class PasswordChangeIn(InModel):
+    current_password: str = Field(max_length=128)
+    new_password: str = Field(max_length=128)
+
+    @field_validator("new_password")
+    @classmethod
+    def _check_new_password(cls, v: str) -> str:
+        if len(v) < MIN_PASSWORD_LENGTH:
+            raise ValueError(f"Mật khẩu cần ít nhất {MIN_PASSWORD_LENGTH} ký tự.")
+        return v
+
+
+class UserUpdateIn(InModel):
+    """Admin sửa tài khoản: chỉ gửi trường muốn đổi. Duyệt tài khoản = đặt status thành active."""
+    role: Literal["staff", "manager", "admin"] | None = None
+    status: Literal["active", "disabled"] | None = None
+
+
+class UserOut(OutModel):
+    id: int
+    username: str
+    full_name: str
+    role: str
+    status: str
+    created_at: datetime | None
+
+
+class ActorOut(OutModel):
+    id: int
+    username: str
+    full_name: str
 
 
 # ---------- Tài sản ----------
@@ -145,5 +236,6 @@ class LogOut(OutModel):
     to_status: str | None
     employee: EmployeeOut | None
     location: LocationOut | None
+    actor: ActorOut | None
     note: str | None
     created_at: datetime | None

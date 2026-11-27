@@ -9,11 +9,14 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..models import READY, STATUSES, Asset, Category, CustodyLog, Employee
+from ..models import READY, STATUSES, Asset, Category, CustodyLog, Employee, User
 from ..schemas import AssetIn, AssetOut, AssetPage, CheckinIn, CheckoutIn, LogOut, StatusIn
 from ..services import custody
+from ..services.auth import current_user, require_admin, require_manager
 
-router = APIRouter(prefix="/api/assets", tags=["assets"])
+# Mọi route ở đây đều cần đăng nhập. Xem: mọi vai trò; cấp phát/thu hồi: quản lý trở lên;
+# thêm/sửa tài sản và đổi trạng thái: chỉ admin.
+router = APIRouter(prefix="/api/assets", tags=["assets"], dependencies=[Depends(current_user)])
 
 DUPLICATE_MESSAGE = "Mã tài sản hoặc serial bị trùng với một tài sản khác."
 
@@ -83,7 +86,7 @@ def asset_stats(db: Session = Depends(get_db)):
 
 
 @router.post("", response_model=AssetOut, status_code=201)
-def create_asset(data: AssetIn, db: Session = Depends(get_db)):
+def create_asset(data: AssetIn, db: Session = Depends(get_db), actor: User = Depends(require_admin)):
     _check_category(db, data.category_id)
     values = data.model_dump()
     tag = values.pop("asset_tag")
@@ -96,7 +99,7 @@ def create_asset(data: AssetIn, db: Session = Depends(get_db)):
         db.flush()
         if not tag:
             asset.asset_tag = f"TS-{asset.id:06d}"
-        custody.add_log(db, asset, "create", None, READY)
+        custody.add_log(db, asset, actor, "create", None, READY)
         db.commit()
     except IntegrityError:
         db.rollback()
@@ -111,7 +114,8 @@ def get_asset(asset_id: int, db: Session = Depends(get_db)):
 
 
 @router.put("/{asset_id}", response_model=AssetOut)
-def update_asset(asset_id: int, data: AssetIn, db: Session = Depends(get_db)):
+def update_asset(asset_id: int, data: AssetIn, db: Session = Depends(get_db),
+                 actor: User = Depends(require_admin)):
     """Sửa thông tin. Không đổi trạng thái / người giữ qua đây."""
     asset = _get_asset(db, asset_id)
     _check_category(db, data.category_id)
@@ -121,7 +125,7 @@ def update_asset(asset_id: int, data: AssetIn, db: Session = Depends(get_db)):
     _check_unique(db, values.get("asset_tag"), data.serial_number, exclude_id=asset.id)
     for key, value in values.items():
         setattr(asset, key, value)
-    custody.add_log(db, asset, "update", None, None, note="Cập nhật thông tin")
+    custody.add_log(db, asset, actor, "update", None, None, note="Cập nhật thông tin")
     try:
         db.commit()
     except IntegrityError:
@@ -132,21 +136,24 @@ def update_asset(asset_id: int, data: AssetIn, db: Session = Depends(get_db)):
 
 
 @router.post("/{asset_id}/checkout", response_model=AssetOut)
-def checkout_asset(asset_id: int, data: CheckoutIn, db: Session = Depends(get_db)):
+def checkout_asset(asset_id: int, data: CheckoutIn, db: Session = Depends(get_db),
+                   actor: User = Depends(require_manager)):
     asset = _get_asset(db, asset_id, lock=True)
-    return custody.checkout(db, asset, data.employee_id, data.location_id, data.note)
+    return custody.checkout(db, asset, actor, data.employee_id, data.location_id, data.note)
 
 
 @router.post("/{asset_id}/checkin", response_model=AssetOut)
-def checkin_asset(asset_id: int, data: CheckinIn, db: Session = Depends(get_db)):
+def checkin_asset(asset_id: int, data: CheckinIn, db: Session = Depends(get_db),
+                  actor: User = Depends(require_manager)):
     asset = _get_asset(db, asset_id, lock=True)
-    return custody.checkin(db, asset, data.status, data.note)
+    return custody.checkin(db, asset, actor, data.status, data.note)
 
 
 @router.post("/{asset_id}/status", response_model=AssetOut)
-def change_asset_status(asset_id: int, data: StatusIn, db: Session = Depends(get_db)):
+def change_asset_status(asset_id: int, data: StatusIn, db: Session = Depends(get_db),
+                        actor: User = Depends(require_admin)):
     asset = _get_asset(db, asset_id, lock=True)
-    return custody.change_status(db, asset, data.status, data.note)
+    return custody.change_status(db, asset, actor, data.status, data.note)
 
 
 @router.get("/{asset_id}/history", response_model=list[LogOut])

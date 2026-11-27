@@ -23,17 +23,14 @@
       <a class="brand" href="#/assets" aria-label="ITAM, về trang Tài sản">
         <span class="tape tape-lg">ITAM</span>
       </a>
-      <nav class="nav" aria-label="Điều hướng chính">
+      <nav class="nav" aria-label="Điều hướng chính" hidden>
         <a href="#/assets" data-nav="assets">Tài sản</a>
         <a href="#/employees" data-nav="employees">Nhân viên</a>
         <a href="#/locations" data-nav="locations">Vị trí</a>
         <a href="#/categories" data-nav="categories">Danh mục</a>
+        <a href="#/users" data-nav="users" data-perm="manageUsers" hidden>Tài khoản<span class="count" id="pending-count" hidden></span></a>
       </nav>
-      <div class="theme-switch" role="group" aria-label="Giao diện">
-        <button type="button" data-theme-btn="light">Sáng</button>
-        <button type="button" data-theme-btn="dark">Tối</button>
-        <button type="button" data-theme-btn="system" title="Theo cài đặt của máy">Tự động</button>
-      </div>
+      <details class="usermenu" id="userbox" hidden></details>
     </div>
   </header>
   <main class="main">
