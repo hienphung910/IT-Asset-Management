@@ -795,7 +795,6 @@ function viewAuth(mode, username = "", notice = "") {
             <option value="staff">Nhân viên</option>
             <option value="manager">Quản lý</option>
           </select>
-          <small class="field-hint">Nhân viên chỉ xem. Quản lý được thêm, sửa nhân viên và cấp phát, thu hồi tài sản.</small>
         </label>`}
         <button class="btn btn-primary">${isLogin ? "Đăng nhập" : "Đăng ký"}</button>
       </form>
