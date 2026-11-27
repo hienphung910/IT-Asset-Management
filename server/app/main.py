@@ -27,6 +27,17 @@ async def lifespan(app: FastAPI):
     yield
 
 
+class NoCacheStaticFiles(StaticFiles):
+    """Giao diện không có bước build nên tên file không đổi khi sửa code. Header này bắt trình
+    duyệt hỏi lại server trước khi dùng bản đã lưu (file chưa đổi thì server trả 304, vẫn nhanh),
+    nhờ vậy không ai bị kẹt với app.js hay style.css cũ."""
+
+    async def get_response(self, path, scope):
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 app = FastAPI(title="ITAM · Quản lý tài sản CNTT", lifespan=lifespan)
 
 
@@ -41,4 +52,4 @@ app.include_router(catalog.router)
 app.include_router(assets.router)
 
 # Web UI (đặt cuối cùng để không che các đường dẫn /api và /docs)
-app.mount("/", StaticFiles(directory=SERVER_DIR / "static", html=True), name="static")
+app.mount("/", NoCacheStaticFiles(directory=SERVER_DIR / "static", html=True), name="static")
