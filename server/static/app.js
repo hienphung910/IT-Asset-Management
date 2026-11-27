@@ -12,24 +12,24 @@ const STATUS = {
 const $app = document.getElementById("app");
 
 // ===================== Tài khoản & quyền =====================
-const ROLES = { admin: "Admin", manager: "Quản lý", staff: "Nhân viên" };
+// Nhãn vai trò, cùng thứ tự và nội dung với ROLE_LABELS trong app/permissions.py
+const ROLES = {
+  admin: "Quản trị hệ thống", infra: "Quản trị hạ tầng", manager: "Quản lý tài sản",
+  helpdesk: "Helpdesk", auditor: "Kiểm toán", enduser: "Nhân viên",
+};
+// Vai trò chọn được khi tự đăng ký (không có admin), mặc định là ít quyền nhất
+const SIGNUP_ROLES = ["enduser", "auditor", "manager", "infra", "helpdesk"];
 // Trạng thái tài khoản: [màu đèn, nhãn]
 const USER_STATUS = {
   active: ["ready", "Đang hoạt động"],
   pending: ["maintenance", "Chờ duyệt"],
   disabled: ["archived", "Đã khóa"],
 };
-// Vai trò nào được làm gì. Chỉ để ẩn/hiện nút; server mới là nơi chặn thật
-// (require_admin / require_manager trong app/routes). Sửa ở đây thì sửa cả ở đó.
-const PERMS = {
-  manageAssets: ["admin"],                // thêm/sửa tài sản, đổi trạng thái
-  manageCatalog: ["admin"],               // danh mục, vị trí
-  manageEmployees: ["admin", "manager"],  // thêm/sửa nhân viên
-  custody: ["admin", "manager"],          // cấp phát, thu hồi
-  manageUsers: ["admin"],                 // duyệt, khóa, đổi vai trò tài khoản
-};
-let me = null;  // tài khoản đang đăng nhập
-const can = perm => !!me && PERMS[perm].includes(me.role);
+let me = null;  // tài khoản đang đăng nhập, kèm danh sách quyền do server trả về
+// Tên quyền lấy từ app/permissions.py (ví dụ "asset.write"). Giao diện không giữ bảng quyền
+// riêng: chỉ hỏi server đã cấp quyền nào, để ẩn/hiện nút. Server mới là nơi chặn thật.
+const can = perm => !!me && me.permissions.includes(perm);
+const seesAll = () => can("asset.view_all");  // false = vai trò Nhân viên, chỉ thấy máy của mình
 
 // Chỉ giữ vài icon thật sự giúp nhận biết (tìm kiếm, vị trí)
 const ICONS = {
@@ -92,7 +92,8 @@ function initials(name) {
 function holder(a) {
   if (a.assigned_employee) {
     const e = a.assigned_employee;
-    return `<a class="holder" href="#/employees/${e.id}"><span class="tile">${esc(initials(e.full_name))}</span><span class="holder-name">${esc(e.full_name)}</span></a>`;
+    const inner = `<span class="tile">${esc(initials(e.full_name))}</span><span class="holder-name">${esc(e.full_name)}</span>`;
+    return seesAll() ? `<a class="holder" href="#/employees/${e.id}">${inner}</a>` : `<span class="holder">${inner}</span>`;
   }
   if (a.assigned_location) {
     return `<span class="holder"><span class="tile">${icon("pin")}</span>${esc(a.assigned_location.name)}</span>`;
@@ -142,6 +143,7 @@ const FIELD_LABELS = {
   name: "Tên", asset_tag: "Mã tài sản", serial_number: "Serial", manufacturer: "Hãng sản xuất",
   model: "Model", category_id: "Danh mục", code: "Mã NV", full_name: "Họ tên", email: "Email",
   department: "Phòng ban", status: "Trạng thái", note: "Ghi chú", notes: "Ghi chú",
+  employee_id: "Hồ sơ nhân viên",
   username: "Tên đăng nhập", password: "Mật khẩu", role: "Vai trò",
   current_password: "Mật khẩu hiện tại", new_password: "Mật khẩu mới",
 };
@@ -267,10 +269,10 @@ let listRequest = 0;
 async function viewAssetList() {
   $app.innerHTML = `
     <div class="page-head">
-      <h1>Tài sản</h1>
-      ${can("manageAssets") ? `<a class="btn btn-primary" href="#/assets/new">+ Thêm tài sản</a>` : ""}
+      <h1>${seesAll() ? "Tài sản" : "Tài sản của tôi"}</h1>
+      ${can("asset.write") ? `<a class="btn btn-primary" href="#/assets/new">+ Thêm tài sản</a>` : ""}
     </div>
-    <section class="panel fleet" id="fleet" aria-label="Tổng quan theo trạng thái"></section>
+    <section class="panel fleet" id="fleet" aria-label="Tổng quan theo trạng thái" ${seesAll() ? "" : "hidden"}></section>
     <section class="panel table-panel">
       <form id="filter" class="toolbar" role="search">
         <label class="search">${icon("search")}
@@ -334,7 +336,7 @@ async function refreshAssets() {
   const [data, s] = await Promise.all([api("/assets?" + params), api("/assets/stats")]);
   if (req !== listRequest || !document.getElementById("asset-rows")) return; // đã có yêu cầu mới hơn
 
-  document.getElementById("fleet").innerHTML = renderFleet(s);
+  if (seesAll()) document.getElementById("fleet").innerHTML = renderFleet(s);
 
   const hasFilter = listState.q || listState.status;
   document.getElementById("asset-rows").innerHTML = data.items.map(a => `
@@ -346,7 +348,10 @@ async function refreshAssets() {
       <td>${holder(a)}</td>
     </tr>`).join("") ||
     emptyRow(5, hasFilter ? "Không có tài sản nào khớp bộ lọc."
-      : can("manageAssets") ? 'Chưa có tài sản nào. Bấm "+ Thêm tài sản" để nhập thiết bị đầu tiên.' : "Chưa có tài sản nào.");
+      : can("asset.write") ? 'Chưa có tài sản nào. Bấm "+ Thêm tài sản" để nhập thiết bị đầu tiên.'
+      : seesAll() ? "Chưa có tài sản nào."
+      : me.employee ? "Bạn chưa được giao tài sản nào."
+      : "Tài khoản của bạn chưa được nối với hồ sơ nhân viên nên chưa có tài sản để hiện. Hãy nhờ quản trị hệ thống nối giúp.");
 
   const pages = Math.max(1, Math.ceil(data.total / data.size));
   const from = data.total ? (data.page - 1) * data.size + 1 : 0;
@@ -495,8 +500,8 @@ function statusChangeForm(a) {
 
 // Chỉ hiện thao tác mà vai trò đang đăng nhập được làm. Trả về "" nếu không có gì để hiện.
 function actionPanel(a, employees, locations) {
-  const canCustody = can("custody");       // cấp phát, thu hồi: quản lý trở lên
-  const canStatus = can("manageAssets");   // đổi trạng thái: chỉ admin
+  const canCustody = can("asset.custody");  // cấp phát, thu hồi
+  const canStatus = can("asset.status");    // đổi trạng thái, thanh lý
   if (!canCustody && !canStatus) return "";
   if (a.status === "archived") {
     return `<p class="note-hint">Tài sản đã thanh lý, không còn thao tác nào.</p>`;
@@ -514,14 +519,14 @@ function actionPanel(a, employees, locations) {
   }
   if (a.status !== "ready") {
     return canStatus ? statusChangeForm(a)
-      : `<p class="note-hint">Tài sản đang ở trạng thái ${esc(STATUS[a.status])} nên chưa cấp phát được. Chỉ admin đổi được trạng thái.</p>`;
+      : `<p class="note-hint">Tài sản đang ở trạng thái ${esc(STATUS[a.status])} nên chưa cấp phát được. Tài khoản của bạn không có quyền đổi trạng thái.</p>`;
   }
 
   let checkout = "";
   if (canCustody) {
     checkout = (!employees.length && !locations.length)
       ? `<p class="note-hint">Chưa có nhân viên hay vị trí nào để cấp phát.
-           <a href="#/employees">Thêm nhân viên</a>${can("manageCatalog") ? ` hoặc <a href="#/locations">thêm vị trí</a>` : ""} trước.</p>`
+           <a href="#/employees">Thêm nhân viên</a>${can("catalog.manage") ? ` hoặc <a href="#/locations">thêm vị trí</a>` : ""} trước.</p>`
       : `
       <form data-action="checkout" class="inline-form">
         <label for="act-target"><span>Cấp phát cho</span>
@@ -567,21 +572,26 @@ function logItem(h) {
 }
 
 async function viewAssetDetail(id) {
+  // Chỉ gọi những API mà tài khoản được phép: vai trò Nhân viên không xem được lịch sử,
+  // và danh sách nhân viên / vị trí chỉ cần khi được cấp phát
   const [a, history, employees, locations] = await Promise.all([
-    api(`/assets/${id}`), api(`/assets/${id}/history`), api("/employees"), api("/locations"),
+    api(`/assets/${id}`),
+    seesAll() ? api(`/assets/${id}/history`) : null,
+    can("asset.custody") ? api("/employees") : [],
+    can("asset.custody") ? api("/locations") : [],
   ]);
   const actions = actionPanel(a, employees, locations);
 
   $app.innerHTML = `
     <div>
-      <a class="back" href="#/assets">← Tài sản</a>
+      <a class="back" href="#/assets">← ${seesAll() ? "Tài sản" : "Tài sản của tôi"}</a>
       <div class="asset-head">
         <div class="asset-title">
           <span class="tape tape-xl">${esc(a.asset_tag)}</span>
           <h1>${esc(a.name)}</h1>
           ${led(a.status)}
         </div>
-        ${a.status !== "archived" && can("manageAssets") ? `<a class="btn" href="#/assets/${a.id}/edit">Sửa thông tin</a>` : ""}
+        ${a.status !== "archived" && can("asset.write") ? `<a class="btn" href="#/assets/${a.id}/edit">Sửa thông tin</a>` : ""}
       </div>
     </div>
     <div class="detail-grid">
@@ -598,11 +608,11 @@ async function viewAssetDetail(id) {
           </dl>
         </section>
         ${actions ? `<section class="panel"><h2>Thao tác</h2>${actions}</section>` : ""}
-        <section class="panel">
+        ${history ? `<section class="panel">
           <h2>Nhật ký lưu ký</h2>
           ${history.length ? `<ol class="log">${history.map(logItem).join("")}</ol>`
                            : `<p class="note-hint">Chưa có lịch sử.</p>`}
-        </section>
+        </section>` : ""}
       </div>
       <aside class="label-side">
         <h2>Tem tài sản</h2>
@@ -657,17 +667,17 @@ async function viewAssetDetail(id) {
 // ===================== Danh mục / Vị trí / Nhân viên (danh sách + thêm/sửa) =====================
 const SIMPLE = {
   categories: {
-    title: "Danh mục", path: "/categories", perm: "manageCatalog",
+    title: "Danh mục", path: "/categories", perm: "catalog.manage",
     noun: "danh mục", labelField: "name",
     fields: [{ name: "name", label: "Tên danh mục", required: true, max: 100 }],
   },
   locations: {
-    title: "Vị trí", path: "/locations", perm: "manageCatalog",
+    title: "Vị trí", path: "/locations", perm: "catalog.manage",
     noun: "vị trí", labelField: "name",
     fields: [{ name: "name", label: "Tên vị trí / phòng ban", required: true, max: 150 }],
   },
   employees: {
-    title: "Nhân viên", path: "/employees", perm: "manageEmployees",
+    title: "Nhân viên", path: "/employees", perm: "employee.manage",
     noun: "nhân viên", labelField: "full_name",
     link: "#/employees/", linkField: "full_name",
     fields: [
@@ -852,8 +862,7 @@ function viewAuth(mode, username = "", notice = "") {
         </label>
         <label for="a-role"><span>Vai trò</span>
           <select id="a-role" name="role">
-            <option value="staff">Nhân viên</option>
-            <option value="manager">Quản lý</option>
+            ${SIGNUP_ROLES.map(r => `<option value="${r}">${ROLES[r]}</option>`).join("")}
           </select>
         </label>`}
         <button class="btn btn-primary">${isLogin ? "Đăng nhập" : "Đăng ký"}</button>
@@ -917,10 +926,13 @@ function viewSettings() {
             <input id="p-username" class="mono" value="${esc(me.username)}" disabled>
           </label>
           <label for="p-role"><span>Vai trò</span>
-            <input id="p-role" value="${ROLES[me.role]}" disabled>
+            <input id="p-role" value="${esc(ROLES[me.role] || me.role)}" disabled>
+          </label>
+          <label for="p-employee"><span>Hồ sơ nhân viên</span>
+            <input id="p-employee" value="${me.employee ? esc(`${me.employee.code} · ${me.employee.full_name}`) : "Chưa nối"}" disabled>
           </label>
         </div>
-        <small class="field-hint">Tên đăng nhập không đổi được. Vai trò do admin cấp.</small>
+        <small class="field-hint">Tên đăng nhập không đổi được. Vai trò và hồ sơ nhân viên do quản trị hệ thống đặt.</small>
         <div class="form-actions"><button class="btn btn-primary">Lưu thông tin</button></div>
       </form>
 
@@ -995,7 +1007,7 @@ function viewSettings() {
 // Số yêu cầu chờ duyệt, hiện cạnh mục "Tài khoản" trên thanh trên
 async function refreshPendingCount(users) {
   const el = document.getElementById("pending-count");
-  if (!can("manageUsers")) { el.hidden = true; return; }
+  if (!can("user.manage")) { el.hidden = true; return; }
   try { users = users || await api("/users"); } catch { return; }
   const n = users.filter(u => u.status === "pending").length;
   el.textContent = n;
@@ -1004,8 +1016,9 @@ async function refreshPendingCount(users) {
 }
 
 async function viewUsers() {
-  const users = await api("/users");
+  const [users, employees, matrix] = await Promise.all([api("/users"), api("/employees"), api("/auth/roles")]);
   refreshPendingCount(users);
+  const linked = new Map(users.filter(u => u.employee_id).map(u => [u.employee_id, u.id]));  // nhân viên → tài khoản đã nối
   const order = { pending: 0, active: 1, disabled: 2 };
   users.sort((a, b) => order[a.status] - order[b.status] || a.username.localeCompare(b.username));
 
@@ -1023,7 +1036,7 @@ async function viewUsers() {
     </div>
     <section class="panel table-panel">
       <div class="table-scroll"><table>
-        <thead><tr><th>Họ tên</th><th>Tên đăng nhập</th><th>Vai trò</th><th>Trạng thái</th><th>Ngày đăng ký</th><th></th></tr></thead>
+        <thead><tr><th>Họ tên</th><th>Tên đăng nhập</th><th>Vai trò</th><th>Hồ sơ nhân viên</th><th>Trạng thái</th><th>Ngày đăng ký</th><th></th></tr></thead>
         <tbody>
           ${users.map(u => `
             <tr>
@@ -1032,14 +1045,35 @@ async function viewUsers() {
               <td>${u.id === me.id
                 ? `<span class="role role-chip">${ROLES[u.role] || esc(u.role)}</span>`
                 : `<select data-role-for="${u.id}" aria-label="Vai trò của ${esc(u.username)}">
+                     ${ROLES[u.role] ? "" : `<option value="" selected disabled>Không hợp lệ: ${esc(u.role)}</option>`}
                      ${Object.keys(ROLES).map(r => `<option value="${r}" ${r === u.role ? "selected" : ""}>${ROLES[r]}</option>`).join("")}
                    </select>`}</td>
+              <td><select data-employee-for="${u.id}" aria-label="Hồ sơ nhân viên của ${esc(u.username)}">
+                    <option value="">Chưa nối</option>
+                    ${employees.filter(e => !linked.has(e.id) || linked.get(e.id) === u.id).map(e =>
+                      `<option value="${e.id}" ${e.id === u.employee_id ? "selected" : ""}>${esc(e.code)} · ${esc(e.full_name)}</option>`).join("")}
+                  </select></td>
               <td><span class="led s-${USER_STATUS[u.status]?.[0] || "archived"}">${esc(USER_STATUS[u.status]?.[1] || u.status)}</span></td>
               <td class="mono muted">${esc(fmtDate(u.created_at))}</td>
               <td><div class="row-actions">${actionsFor(u)}</div></td>
             </tr>`).join("")}
         </tbody>
       </table></div>
+    </section>
+    <section class="panel table-panel">
+      <div class="toolbar"><h2>Bảng quyền theo vai trò</h2></div>
+      <div class="table-scroll"><table class="matrix">
+        <thead><tr><th>Quyền</th>${matrix.roles.map(r => `<th>${esc(r.label)}</th>`).join("")}</tr></thead>
+        <tbody>
+          ${matrix.permissions.map(p => `
+            <tr>
+              <td class="wrap">${esc(p.label)}</td>
+              ${matrix.roles.map(r => p.roles.includes(r.code)
+                ? `<td class="yes" aria-label="Có">●</td>` : `<td class="no" aria-label="Không">–</td>`).join("")}
+            </tr>`).join("")}
+        </tbody>
+      </table></div>
+      <p class="table-foot">Vai trò Nhân viên không có quyền nào ở trên: chỉ xem được tài sản đang giao cho hồ sơ nhân viên đã nối với tài khoản.</p>
     </section>`;
 
   const byId = id => users.find(u => u.id === Number(id));
@@ -1047,11 +1081,24 @@ async function viewUsers() {
   const tbody = $app.querySelector("tbody");
 
   tbody.onchange = async e => {
+    const link = e.target.closest("[data-employee-for]");
+    if (link) {  // nối hoặc bỏ nối tài khoản với hồ sơ nhân viên
+      const u = byId(link.dataset.employeeFor);
+      try {
+        await api(`/users/${u.id}`, { method: "PATCH", body: { employee_id: link.value ? Number(link.value) : null } });
+        toast(link.value ? `Đã nối ${u.username} với ${link.selectedOptions[0].textContent}` : `Đã bỏ nối hồ sơ nhân viên của ${u.username}`);
+        if (u.id === me.id) { me = await api("/auth/me"); renderChrome(); }
+      } catch (err) {
+        showError(err);
+      }
+      reload();
+      return;
+    }
     const sel = e.target.closest("[data-role-for]");
     if (!sel) return;
     const u = byId(sel.dataset.roleFor);
     if (sel.value === "admin" &&
-        !confirm(`Cấp vai trò Admin cho ${u.username}? Admin có toàn quyền, kể cả quản lý tài khoản.`)) {
+        !confirm(`Cấp vai trò Quản trị hệ thống cho ${u.username}? Vai trò này có toàn quyền, kể cả quản lý tài khoản.`)) {
       sel.value = u.role;
       return;
     }
@@ -1099,14 +1146,14 @@ async function viewUsers() {
 // Phần tử thứ ba (nếu có) là quyền cần có để mở trang
 const routes = [
   [/^#\/assets$/, () => viewAssetList()],
-  [/^#\/assets\/new$/, () => viewAssetForm(null), "manageAssets"],
-  [/^#\/assets\/(\d+)\/edit$/, m => viewAssetForm(Number(m[1])), "manageAssets"],
+  [/^#\/assets\/new$/, () => viewAssetForm(null), "asset.write"],
+  [/^#\/assets\/(\d+)\/edit$/, m => viewAssetForm(Number(m[1])), "asset.write"],
   [/^#\/assets\/(\d+)$/, m => viewAssetDetail(Number(m[1]))],
-  [/^#\/employees$/, () => viewSimple(SIMPLE.employees)],
-  [/^#\/employees\/(\d+)$/, m => viewEmployee(Number(m[1]))],
-  [/^#\/locations$/, () => viewSimple(SIMPLE.locations)],
-  [/^#\/categories$/, () => viewSimple(SIMPLE.categories)],
-  [/^#\/users$/, () => viewUsers(), "manageUsers"],
+  [/^#\/employees$/, () => viewSimple(SIMPLE.employees), "asset.view_all"],
+  [/^#\/employees\/(\d+)$/, m => viewEmployee(Number(m[1])), "asset.view_all"],
+  [/^#\/locations$/, () => viewSimple(SIMPLE.locations), "asset.view_all"],
+  [/^#\/categories$/, () => viewSimple(SIMPLE.categories), "asset.view_all"],
+  [/^#\/users$/, () => viewUsers(), "user.manage"],
   [/^#\/settings$/, () => viewSettings()],
 ];
 

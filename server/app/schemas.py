@@ -95,7 +95,8 @@ class RegisterIn(InModel):
     full_name: str = Field(max_length=150)
     password: str = Field(max_length=128)
     # Không có "admin": admin chỉ do admin khác cấp. Trạng thái luôn là chờ duyệt, do server đặt.
-    role: Literal["staff", "manager"] = "staff"
+    # Danh sách này phải khớp SELF_REGISTER_ROLES trong permissions.py.
+    role: Literal["enduser", "auditor", "manager", "infra", "helpdesk"] = "enduser"
 
     @field_validator("username")
     @classmethod
@@ -151,9 +152,11 @@ class PasswordChangeIn(InModel):
 
 
 class UserUpdateIn(InModel):
-    """Admin sửa tài khoản: chỉ gửi trường muốn đổi. Duyệt tài khoản = đặt status thành active."""
-    role: Literal["staff", "manager", "admin"] | None = None
+    """Admin sửa tài khoản: chỉ gửi trường muốn đổi. Duyệt tài khoản = đặt status thành active.
+    employee_id: gửi số để nối với một nhân viên, gửi null để bỏ nối, không gửi thì giữ nguyên."""
+    role: Literal["admin", "infra", "manager", "helpdesk", "auditor", "enduser"] | None = None
     status: Literal["active", "disabled"] | None = None
+    employee_id: int | None = None
 
 
 class UserOut(OutModel):
@@ -162,6 +165,9 @@ class UserOut(OutModel):
     full_name: str
     role: str
     status: str
+    permissions: list[str]         # quyền theo vai trò, xem permissions.py
+    employee_id: int | None
+    employee: EmployeeOut | None   # hồ sơ nhân viên đã nối, nếu có
     created_at: datetime | None
 
 

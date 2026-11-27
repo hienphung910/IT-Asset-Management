@@ -10,7 +10,8 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..models import ROLE_ADMIN, ROLE_MANAGER, USER_ACTIVE, User, UserSession
+from ..models import USER_ACTIVE, User, UserSession
+from ..permissions import has_permission
 from ..schemas import MIN_PASSWORD_LENGTH  # noqa: F401  (database.py dùng lại)
 
 COOKIE_NAME = "itam_session"
@@ -77,13 +78,10 @@ def current_user(request: Request, db: Session = Depends(get_db)) -> User:
     raise HTTPException(401, "Bạn cần đăng nhập để tiếp tục.")
 
 
-def require_roles(*roles: str):
+def require_perm(permission: str):
+    """Dependency cho route: tài khoản đang đăng nhập phải có quyền này (xem permissions.py)."""
     def checker(user: User = Depends(current_user)) -> User:
-        if user.role not in roles:
+        if not has_permission(user.role, permission):
             raise HTTPException(403, "Tài khoản của bạn không có quyền làm thao tác này.")
         return user
     return checker
-
-
-require_manager = require_roles(ROLE_MANAGER, ROLE_ADMIN)  # quản lý trở lên
-require_admin = require_roles(ROLE_ADMIN)

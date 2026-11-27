@@ -14,17 +14,21 @@
 - Hãng sản xuất và model được lưu riêng, nên form tài sản gợi ý các hãng và model đã nhập trước đó. Hai ô này đi cùng nhau: nhập cả hai hoặc để trống cả hai.
 - Danh mục thuộc về model chứ không thuộc từng tài sản: mọi tài sản cùng model có cùng danh mục, và tài sản chưa nhập hãng, model thì chưa có danh mục.
 - Giao diện mặc định theo cài đặt sáng/tối của máy; sau khi đăng nhập có thể đổi sang sáng hoặc tối trong trang Cài đặt.
-- Phải đăng nhập mới dùng được, và mỗi tài khoản có một trong ba vai trò (xem bảng dưới). Nhật ký của tài sản ghi cả tài khoản đã thao tác.
+- Phải đăng nhập mới dùng được, và mỗi tài khoản có một trong sáu vai trò (xem bảng dưới). Nhật ký của tài sản ghi cả tài khoản đã thao tác.
 
 ## Tài khoản và vai trò
 
-| Vai trò | Được làm gì | Cách có tài khoản |
-|---|---|---|
-| Nhân viên | Chỉ xem | Tự đăng ký, chờ admin duyệt rồi mới đăng nhập được |
-| Quản lý | Xem, thêm và sửa nhân viên, cấp phát và thu hồi tài sản | Tự đăng ký, chờ admin duyệt rồi mới đăng nhập được |
-| Admin | Toàn quyền: thêm và sửa tài sản, đổi trạng thái, danh mục, vị trí, duyệt, khóa và đổi vai trò tài khoản | Tài khoản đầu tiên lấy từ `.env`; các admin sau do admin khác cấp ở trang Tài khoản |
+| Vai trò | Được làm gì |
+|---|---|
+| Quản trị hệ thống | Toàn quyền: thêm và sửa tài sản, đổi trạng thái, danh mục, vị trí, duyệt, khóa, đổi vai trò tài khoản |
+| Quản trị hạ tầng | Xem toàn bộ. Các quyền riêng (cấu hình quét, chạy script từ xa) đã khai báo sẵn cho các module sau |
+| Quản lý tài sản | Xem toàn bộ, thêm và sửa nhân viên, cấp phát và thu hồi tài sản |
+| Helpdesk | Xem toàn bộ, để tra cứu thiết bị và lịch sử của người báo lỗi |
+| Kiểm toán | Xem toàn bộ, không sửa gì |
+| Nhân viên | Chỉ xem tài sản đang giao cho chính mình |
 
-Tài khoản đăng nhập khác với mục Nhân viên trên menu: Nhân viên là danh sách người nhận tài sản, không cần có tài khoản.
+Ai cũng tự đăng ký được và chọn vai trò mong muốn (trừ Quản trị hệ thống), nhưng tài khoản mới phải chờ quản trị hệ thống duyệt rồi mới đăng nhập được; khi duyệt có thể đổi vai trò. Tài khoản quản trị đầu tiên lấy từ `.env`. Trang Tài khoản có bảng quyền theo vai trò đúng như server đang áp dụng.
+Tài khoản đăng nhập khác với mục Nhân viên trên menu: Nhân viên là danh sách người nhận tài sản, không cần có tài khoản. Quản trị hệ thống nối một tài khoản với một hồ sơ nhân viên ở trang Tài khoản; tài khoản vai trò Nhân viên phải được nối thì mới thấy tài sản của mình.
 
 Bấm vào tên mình ở góc phải thanh trên để mở menu tài khoản: mục Cài đặt cho đổi họ tên, đổi mật khẩu và chọn giao diện; Đăng xuất cũng nằm ở đây.
 
@@ -79,6 +83,19 @@ Nếu server dừng với thông báo "Không kết nối được MySQL", hãy 
 Nếu server dừng với thông báo "Hệ thống chưa có tài khoản admin", hãy điền `ADMIN_PASSWORD` trong `.env` rồi chạy lại. Hai dòng `ADMIN_...` chỉ được dùng khi database chưa có admin nào; sửa chúng về sau không đổi mật khẩu của tài khoản đã tạo.
 
 Trên macOS hoặc Linux, thay `.venv\Scripts\python` bằng `.venv/bin/python`, và thay `Copy-Item` bằng `cp`.
+
+## Nâng cấp từ bản cũ
+
+Server không tự sửa bảng đã có. Nếu database được tạo trước khi có sáu vai trò, chạy hai lệnh SQL sau một lần (hoặc xóa database để server tạo lại từ đầu):
+
+```sql
+ALTER TABLE user ADD COLUMN employee_id INT NULL,
+  ADD UNIQUE KEY uq_user_employee (employee_id),
+  ADD CONSTRAINT fk_user_employee FOREIGN KEY (employee_id) REFERENCES employee(id);
+UPDATE user SET role = 'auditor' WHERE role = 'staff';
+```
+
+Vai trò cũ `staff` (xem toàn bộ, không sửa) nay tên là Kiểm toán (`auditor`); quyền của các tài khoản đó không đổi.
 
 ## Cấu trúc thư mục
 

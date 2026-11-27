@@ -25,10 +25,10 @@
       </a>
       <nav class="nav" aria-label="Điều hướng chính" hidden>
         <a href="#/assets" data-nav="assets">Tài sản</a>
-        <a href="#/employees" data-nav="employees">Nhân viên</a>
-        <a href="#/locations" data-nav="locations">Vị trí</a>
-        <a href="#/categories" data-nav="categories">Danh mục</a>
-        <a href="#/users" data-nav="users" data-perm="manageUsers" hidden>Tài khoản<span class="count" id="pending-count" hidden></span></a>
+        <a href="#/employees" data-nav="employees" data-perm="asset.view_all" hidden>Nhân viên</a>
+        <a href="#/locations" data-nav="locations" data-perm="asset.view_all" hidden>Vị trí</a>
+        <a href="#/categories" data-nav="categories" data-perm="asset.view_all" hidden>Danh mục</a>
+        <a href="#/users" data-nav="users" data-perm="user.manage" hidden>Tài khoản<span class="count" id="pending-count" hidden></span></a>
       </nav>
       <details class="usermenu" id="userbox" hidden></details>
     </div>

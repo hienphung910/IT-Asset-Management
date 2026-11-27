@@ -4,7 +4,7 @@ from uuid import uuid4
 
 import qrcode
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
-from sqlalchemy import func, or_, select
+from sqlalchemy import false, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -14,10 +14,12 @@ from ..models import (
 )
 from ..schemas import AssetIn, AssetOut, AssetPage, CheckinIn, CheckoutIn, LogOut, StatusIn
 from ..services import custody
-from ..services.auth import current_user, require_admin, require_manager
+from ..permissions import ASSET_CUSTODY, ASSET_STATUS, ASSET_WRITE, VIEW_ALL, has_permission
+from ..services.auth import current_user, require_perm
 
-# Mọi route ở đây đều cần đăng nhập. Xem: mọi vai trò; cấp phát/thu hồi: quản lý trở lên;
-# thêm/sửa tài sản và đổi trạng thái: chỉ admin.
+# Mọi route ở đây đều cần đăng nhập. Route ghi cần đúng quyền (xem permissions.py).
+# Route đọc phải giới hạn theo người xem: tài khoản không có quyền xem toàn bộ (vai trò
+# Nhân viên) chỉ thấy tài sản đang giao cho hồ sơ nhân viên của mình (_only_visible, _get_visible_asset).
 router = APIRouter(prefix="/api/assets", tags=["assets"], dependencies=[Depends(current_user)])
 
 DUPLICATE_MESSAGE = "Mã tài sản hoặc serial bị trùng với một tài sản khác."
@@ -27,6 +29,24 @@ def _get_asset(db: Session, asset_id: int, lock: bool = False) -> Asset:
     # lock=True: khóa dòng (SELECT ... FOR UPDATE) để 2 người không cấp phát cùng lúc
     asset = db.get(Asset, asset_id, with_for_update=lock)
     if asset is None:
+        raise HTTPException(404, "Không tìm thấy tài sản này.")
+    return asset
+
+
+def _only_visible(stmt, viewer: User):
+    """Thu hẹp một câu truy vấn tài sản về những gì người xem được thấy."""
+    if has_permission(viewer.role, VIEW_ALL):
+        return stmt
+    if viewer.employee_id is None:  # chưa nối hồ sơ nhân viên thì chưa có "tài sản của tôi"
+        return stmt.where(false())
+    return stmt.where(Asset.assigned_employee_id == viewer.employee_id)
+
+
+def _get_visible_asset(db: Session, asset_id: int, viewer: User) -> Asset:
+    """Như _get_asset, nhưng tài sản của người khác thì báo như không tồn tại (không lộ là có)."""
+    asset = _get_asset(db, asset_id)
+    own = viewer.employee_id is not None and asset.assigned_employee_id == viewer.employee_id
+    if not (has_permission(viewer.role, VIEW_ALL) or own):
         raise HTTPException(404, "Không tìm thấy tài sản này.")
     return asset
 
@@ -105,10 +125,14 @@ def list_assets(
     page: int = Query(1, ge=1),
     size: int = Query(20, ge=1, le=100),
     db: Session = Depends(get_db),
+    viewer: User = Depends(current_user),
 ):
-    stmt = (select(Asset)
-            .outerjoin(Employee, Asset.assigned_employee_id == Employee.id)
-            .outerjoin(AssetModel, Asset.model_id == AssetModel.id))
+    stmt = _only_visible(
+        select(Asset)
+        .outerjoin(Employee, Asset.assigned_employee_id == Employee.id)
+        .outerjoin(AssetModel, Asset.model_id == AssetModel.id),
+        viewer,
+    )
     if q and q.strip():
         like = f"%{q.strip()}%"
         stmt = stmt.where(or_(
@@ -130,16 +154,18 @@ def list_assets(
 
 
 @router.get("/stats")
-def asset_stats(db: Session = Depends(get_db)):
-    """Đếm số tài sản theo trạng thái (cho các thẻ thống kê)."""
+def asset_stats(db: Session = Depends(get_db), viewer: User = Depends(current_user)):
+    """Đếm số tài sản theo trạng thái (cho các thẻ thống kê), trong phạm vi người xem được thấy."""
     counts = {s: 0 for s in STATUSES}
-    for status, n in db.execute(select(Asset.status, func.count()).group_by(Asset.status)):
+    stmt = _only_visible(select(Asset.status, func.count()).group_by(Asset.status), viewer)
+    for status, n in db.execute(stmt):
         counts[status] = n
     return {"total": sum(counts.values()), **counts}
 
 
 @router.post("", response_model=AssetOut, status_code=201)
-def create_asset(data: AssetIn, db: Session = Depends(get_db), actor: User = Depends(require_admin)):
+def create_asset(data: AssetIn, db: Session = Depends(get_db),
+                 actor: User = Depends(require_perm(ASSET_WRITE))):
     _check_category(db, data.category_id)
     values = data.model_dump()
     tag = values.pop("asset_tag")
@@ -166,13 +192,13 @@ def create_asset(data: AssetIn, db: Session = Depends(get_db), actor: User = Dep
 
 
 @router.get("/{asset_id}", response_model=AssetOut)
-def get_asset(asset_id: int, db: Session = Depends(get_db)):
-    return _get_asset(db, asset_id)
+def get_asset(asset_id: int, db: Session = Depends(get_db), viewer: User = Depends(current_user)):
+    return _get_visible_asset(db, asset_id, viewer)
 
 
 @router.put("/{asset_id}", response_model=AssetOut)
 def update_asset(asset_id: int, data: AssetIn, db: Session = Depends(get_db),
-                 actor: User = Depends(require_admin)):
+                 actor: User = Depends(require_perm(ASSET_WRITE))):
     """Sửa thông tin. Không đổi trạng thái / người giữ qua đây."""
     asset = _get_asset(db, asset_id)
     _check_category(db, data.category_id)
@@ -197,27 +223,29 @@ def update_asset(asset_id: int, data: AssetIn, db: Session = Depends(get_db),
 
 @router.post("/{asset_id}/checkout", response_model=AssetOut)
 def checkout_asset(asset_id: int, data: CheckoutIn, db: Session = Depends(get_db),
-                   actor: User = Depends(require_manager)):
+                   actor: User = Depends(require_perm(ASSET_CUSTODY))):
     asset = _get_asset(db, asset_id, lock=True)
     return custody.checkout(db, asset, actor, data.employee_id, data.location_id, data.note)
 
 
 @router.post("/{asset_id}/checkin", response_model=AssetOut)
 def checkin_asset(asset_id: int, data: CheckinIn, db: Session = Depends(get_db),
-                  actor: User = Depends(require_manager)):
+                  actor: User = Depends(require_perm(ASSET_CUSTODY))):
     asset = _get_asset(db, asset_id, lock=True)
     return custody.checkin(db, asset, actor, data.status, data.note)
 
 
 @router.post("/{asset_id}/status", response_model=AssetOut)
 def change_asset_status(asset_id: int, data: StatusIn, db: Session = Depends(get_db),
-                        actor: User = Depends(require_admin)):
+                        actor: User = Depends(require_perm(ASSET_STATUS))):
     asset = _get_asset(db, asset_id, lock=True)
     return custody.change_status(db, asset, actor, data.status, data.note)
 
 
-@router.get("/{asset_id}/history", response_model=list[LogOut])
+@router.get("/{asset_id}/history", response_model=list[LogOut],
+            dependencies=[Depends(require_perm(VIEW_ALL))])
 def asset_history(asset_id: int, db: Session = Depends(get_db)):
+    # Lịch sử có tên những người từng giữ máy, nên vai trò Nhân viên không xem được
     _get_asset(db, asset_id)
     stmt = (select(CustodyLog).where(CustodyLog.asset_id == asset_id)
             .order_by(CustodyLog.id.desc()))
@@ -225,9 +253,10 @@ def asset_history(asset_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/{asset_id}/qr")
-def asset_qr(asset_id: int, request: Request, db: Session = Depends(get_db)):
+def asset_qr(asset_id: int, request: Request, db: Session = Depends(get_db),
+             viewer: User = Depends(current_user)):
     """Ảnh QR chứa link tới trang chi tiết tài sản."""
-    asset = _get_asset(db, asset_id)
+    asset = _get_visible_asset(db, asset_id, viewer)
     url = f"{str(request.base_url).rstrip('/')}/#/assets/{asset.id}"
     img = qrcode.make(url, box_size=8, border=2)
     buf = io.BytesIO()

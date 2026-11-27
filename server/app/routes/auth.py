@@ -5,7 +5,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..models import USER_DISABLED, USER_PENDING, CustodyLog, User
+from ..models import USER_DISABLED, USER_PENDING, CustodyLog, Employee, User
+from ..permissions import PERMISSIONS, ROLE_LABELS, ROLE_PERMISSIONS, USER_MANAGE
 from ..schemas import LoginIn, PasswordChangeIn, ProfileIn, RegisterIn, UserOut, UserUpdateIn
 from ..services import auth
 
@@ -19,7 +20,8 @@ USERNAME_TAKEN = {"message": "Tên đăng nhập này đã có người dùng. C
 
 @router.post("/register", response_model=UserOut, status_code=201)
 def register(data: RegisterIn, db: Session = Depends(get_db)):
-    """Tài khoản mới luôn ở trạng thái chờ duyệt, bất kể vai trò; admin duyệt rồi mới đăng nhập được."""
+    """Tài khoản mới luôn ở trạng thái chờ duyệt, bất kể vai trò; admin duyệt rồi mới đăng nhập được.
+    Vai trò người đăng ký chọn chỉ là đề nghị: admin đổi được khi duyệt."""
     if db.scalar(select(User.id).where(User.username == data.username)):
         raise HTTPException(409, USERNAME_TAKEN)
     user = User(
@@ -97,7 +99,23 @@ def change_password(data: PasswordChangeIn, request: Request, db: Session = Depe
     return {"ok": True}
 
 
-# ---------- Quản lý tài khoản (chỉ admin) ----------
+# ---------- Quản lý tài khoản (quyền user.manage) ----------
+
+can_manage_users = auth.require_perm(USER_MANAGE)
+
+
+@router.get("/roles", dependencies=[Depends(can_manage_users)])
+def role_matrix():
+    """Bảng quyền theo vai trò, để trang Tài khoản hiển thị đúng những gì server đang áp dụng."""
+    return {
+        "roles": [{"code": code, "label": label} for code, label in ROLE_LABELS.items()],
+        "permissions": [
+            {"code": code, "label": label,
+             "roles": [r for r in ROLE_LABELS if code in ROLE_PERMISSIONS.get(r, set())]}
+            for code, label in PERMISSIONS.items()
+        ],
+    }
+
 
 def _get_user(db: Session, user_id: int) -> User:
     user = db.get(User, user_id)
@@ -107,18 +125,29 @@ def _get_user(db: Session, user_id: int) -> User:
 
 
 @users_router.get("", response_model=list[UserOut])
-def list_users(db: Session = Depends(get_db), admin: User = Depends(auth.require_admin)):
+def list_users(db: Session = Depends(get_db), admin: User = Depends(can_manage_users)):
     return db.scalars(select(User).order_by(User.id)).all()
 
 
 @users_router.patch("/{user_id}", response_model=UserOut)
 def update_user(user_id: int, data: UserUpdateIn, db: Session = Depends(get_db),
-                admin: User = Depends(auth.require_admin)):
-    """Duyệt (status=active), khóa/mở khóa hoặc đổi vai trò."""
+                admin: User = Depends(can_manage_users)):
+    """Duyệt (status=active), khóa/mở khóa, đổi vai trò hoặc nối với hồ sơ nhân viên."""
     user = _get_user(db, user_id)
-    if user.id == admin.id:
+    if user.id == admin.id and (data.role is not None or data.status is not None):
         # Nhờ vậy hệ thống luôn còn ít nhất một admin đang hoạt động
         raise HTTPException(409, "Bạn không tự đổi vai trò hay khóa tài khoản của chính mình được.")
+    if "employee_id" in data.model_fields_set:  # có gửi: số = nối, null = bỏ nối
+        if data.employee_id is not None:
+            if db.get(Employee, data.employee_id) is None:
+                raise HTTPException(404, "Không tìm thấy nhân viên đã chọn.")
+            other = db.scalar(select(User).where(User.employee_id == data.employee_id))
+            if other and other.id != user.id:
+                raise HTTPException(409, {
+                    "message": f"Nhân viên này đã được nối với tài khoản {other.username}.",
+                    "field": "employee_id",
+                })
+        user.employee_id = data.employee_id
     if data.role is not None:
         user.role = data.role
     if data.status is not None:
@@ -132,7 +161,7 @@ def update_user(user_id: int, data: UserUpdateIn, db: Session = Depends(get_db),
 
 @users_router.delete("/{user_id}", status_code=204)
 def delete_user(user_id: int, db: Session = Depends(get_db),
-                admin: User = Depends(auth.require_admin)):
+                admin: User = Depends(can_manage_users)):
     """Xóa tài khoản (ví dụ từ chối yêu cầu đăng ký). Tài khoản đã có thao tác thì chỉ khóa được."""
     user = _get_user(db, user_id)
     if user.id == admin.id:

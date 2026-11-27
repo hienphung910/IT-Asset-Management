@@ -78,10 +78,11 @@ def init_db() -> None:
 def _ensure_admin(db) -> None:
     """Tạo tài khoản admin đầu tiên từ .env. Không có admin thì không ai duyệt được tài khoản."""
     from . import models
+    from .permissions import ROLE_ADMIN
     from .schemas import USERNAME_RE
     from .services.auth import MIN_PASSWORD_LENGTH, hash_password
 
-    if db.scalar(select(models.User.id).where(models.User.role == models.ROLE_ADMIN).limit(1)):
+    if db.scalar(select(models.User.id).where(models.User.role == ROLE_ADMIN).limit(1)):
         return
     if len(config.ADMIN_PASSWORD) < MIN_PASSWORD_LENGTH:
         raise RuntimeError(
@@ -98,6 +99,6 @@ def _ensure_admin(db) -> None:
     db.add(models.User(
         username=config.ADMIN_USERNAME, full_name="Quản trị viên",
         password_hash=hash_password(config.ADMIN_PASSWORD),
-        role=models.ROLE_ADMIN, status=models.USER_ACTIVE,
+        role=ROLE_ADMIN, status=models.USER_ACTIVE,
     ))
     db.commit()

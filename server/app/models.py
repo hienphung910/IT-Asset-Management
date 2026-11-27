@@ -5,6 +5,7 @@ from sqlalchemy import JSON, DateTime, ForeignKey, String, Text, UniqueConstrain
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
+from .permissions import ROLE_ENDUSER, permissions_of
 
 # Trạng thái vòng đời tài sản
 READY = "ready"              # Sẵn sàng cấp phát
@@ -14,10 +15,7 @@ BROKEN = "broken"            # Hỏng / Chờ thanh lý
 ARCHIVED = "archived"        # Đã thanh lý
 STATUSES = [READY, DEPLOYED, MAINTENANCE, BROKEN, ARCHIVED]
 
-# Vai trò tài khoản đăng nhập
-ROLE_ADMIN = "admin"      # Toàn quyền, kể cả quản lý tài khoản
-ROLE_MANAGER = "manager"  # Quản lý nhân viên, cấp phát và thu hồi tài sản
-ROLE_STAFF = "staff"      # Chỉ xem
+# Vai trò và quyền của tài khoản nằm ở app/permissions.py
 
 # Trạng thái tài khoản
 USER_ACTIVE = "active"      # Đăng nhập được
@@ -58,9 +56,19 @@ class User(Base):
     username: Mapped[str] = mapped_column(String(50), unique=True)  # luôn lưu chữ thường
     full_name: Mapped[str] = mapped_column(String(150))
     password_hash: Mapped[str] = mapped_column(String(255))
-    role: Mapped[str] = mapped_column(String(20), default=ROLE_STAFF)
+    role: Mapped[str] = mapped_column(String(20), default=ROLE_ENDUSER)
     status: Mapped[str] = mapped_column(String(20), default=USER_ACTIVE)
+    # Hồ sơ nhân viên của người dùng tài khoản này (do admin nối). Vai trò Nhân viên
+    # dựa vào đây để biết "tài sản của tôi" là tài sản nào. Mỗi nhân viên nối tối đa một tài khoản.
+    employee_id: Mapped[int | None] = mapped_column(ForeignKey("employee.id"), unique=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=text("CURRENT_TIMESTAMP"))
+
+    employee: Mapped[Employee | None] = relationship(lazy="joined")
+
+    @property
+    def permissions(self) -> list[str]:
+        """Các quyền của tài khoản theo vai trò; giao diện dùng để ẩn/hiện nút."""
+        return permissions_of(self.role)
 
 
 class UserSession(Base):
